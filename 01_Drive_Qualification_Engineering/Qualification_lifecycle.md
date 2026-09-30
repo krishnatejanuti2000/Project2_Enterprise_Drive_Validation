@@ -1,10 +1,12 @@
-# Module 01 — Drive Qualification Engineering
+# MODULE 01 — DRIVE QUALIFICATION ENGINEERING
 
 ## 1. Objective
 
-Drive Qualification Engineering is the process of taking a **new enterprise NVMe SSD** and systematically establishing that it is suitable for qualification.
+Drive Qualification Engineering is the process of taking a **new enterprise storage drive**, primarily an **NVMe SSD**, and systematically establishing whether it satisfies the requirements for qualification.
 
-The drive is not considered qualified from a single successful command or test. It must progress through a defined lifecycle, with evidence collected at each stage.
+Qualification is not a single test.
+
+It is a **sequence of validation stages**, where each stage answers a different question and produces evidence for the final qualification decision.
 
 ---
 
@@ -42,31 +44,31 @@ Regression
 Qualification
 ```
 
-Each stage answers a different engineering question.
+The stages are related, but they do not answer the same question.
 
 ---
 
 ## 3. New Drive
 
-### What is it?
+### Meaning
 
-A new enterprise NVMe SSD has arrived and is being introduced into the validation environment.
+A new drive has entered the validation environment and becomes the **device under qualification**.
 
-### What are we trying to establish?
+### Main question
 
-Before testing anything, we need to establish the drive as the **device under qualification** and place it into the intended validation environment.
+> **What drive has arrived, and is it ready to enter the qualification process?**
 
-This is the starting point of the qualification lifecycle.
+This is the starting point from which all later evidence is associated with the specific drive.
 
 ---
 
 # 4. Enumeration
 
-### What is it?
+### Meaning
 
 Enumeration establishes that the newly installed drive can successfully progress through the platform and operating-system discovery path.
 
-For our NVMe SSD, the working engineering flow is:
+For our NVMe validation work, the fixed engineering flow is:
 
 ```text
 PCIe device discovered
@@ -86,50 +88,68 @@ Namespaces are discovered/registered
 Linux block device is created
 ```
 
-### What are we trying to establish?
-
-We want to know:
+### Main question
 
 > **How far has the newly installed SSD successfully progressed through the system?**
 
-### Validation mindset
+### Validation approach
 
-At each stage:
+At each point we compare:
 
 ```text
 Expected State
       ↓
-Collect Evidence
+Observed State
       ↓
-Observe Actual State
+Evidence
       ↓
-Find First Divergence
-      ↓
-Investigate
+First Divergence
 ```
 
-The important troubleshooting principle is:
+We do not jump directly from a symptom to a root cause.
 
-> **Do not jump from a symptom directly to a root cause. Find the first point where the expected state is no longer observed.**
-
-For example:
+### Example
 
 ```text
-PCIe ✓
-NVMe Controller ✓
-Namespace ✗
-Block Device ✗
+PCIe                  ✓
+NVMe Controller       ✓
+Namespace             ✗
+Block Device          ✗
 ```
 
-The investigation should begin at the **controller → namespace boundary**, rather than immediately investigating the filesystem or application.
+The first known divergence is:
+
+```text
+Controller
+    ↓
+Namespace discovery/registration
+```
+
+Therefore, investigation starts at that boundary rather than immediately investigating the filesystem or application.
+
+### Typical evidence used during enumeration
+
+```text
+lspci
+lspci -vv
+lspci -k
+nvme list
+kernel / system logs
+```
+
+Each command is used to answer a specific question; commands are not the validation methodology by themselves.
 
 ---
 
 # 5. Identification
 
-### What is it?
+### Meaning
 
-Identification determines **exactly which drive/controller has been discovered**.
+Identification determines **exactly which drive and NVMe controller have been discovered**.
+
+### Main question
+
+> **What device am I actually validating?**
 
 Important identity information includes:
 
@@ -142,45 +162,49 @@ Namespace Information
 Firmware Revision
 ```
 
-### What are we trying to establish?
-
-We want to answer:
-
-> **“Exactly what device am I validating?”**
-
-For example:
+### Engineering distinction
 
 ```text
-Model  → What product is this?
-Serial → Which individual physical drive is this?
-Firmware → Which firmware revision is installed?
+Model
+↓
+What product is this?
+
+Serial Number
+↓
+Which individual physical drive is this?
+
+Firmware Revision
+↓
+Which firmware is installed?
 ```
 
-The identity information becomes the baseline for the remaining qualification work.
+The identification information becomes the baseline for the following qualification stages.
 
 ---
 
 # 6. Firmware Check
 
-### What is it?
+### Meaning
 
 Firmware Check determines the firmware revision currently installed on the identified drive and compares it with the required qualification baseline.
 
+### Main question
+
+> **Is this drive running the firmware required for this qualification?**
+
+The validation logic is:
+
 ```text
 Expected Firmware
-       ↓
+        ↓
 Observed Firmware
-       ↓
+        ↓
 Compare
-       ↓
+        ↓
 Result
 ```
 
-### What are we trying to establish?
-
-> **“Is this identified drive running the firmware required for this qualification?”**
-
-Reporting a firmware revision is not the same as validating it.
+### Important distinction
 
 ```text
 Firmware identified
@@ -188,17 +212,23 @@ Firmware identified
 Firmware qualified
 ```
 
-Detailed firmware lifecycle activities such as upgrade, activation, reset, downgrade, rollback, recovery, compatibility, and post-update validation are separate validation activities.
+A drive reporting a firmware revision does not automatically mean that the revision is approved.
+
+Detailed firmware lifecycle activities such as upgrade, activation, downgrade, rollback, recovery, and post-update validation are separate validation activities.
 
 ---
 
 # 7. Health Check
 
-### What is it?
+### Meaning
 
-Health Check establishes the **current health state reported by the SSD**.
+Health Check establishes the **current health state reported by the drive** before deeper qualification continues.
 
-Important health information includes:
+### Main question
+
+> **What health condition is the drive reporting at this point in time?**
+
+Typical health information includes:
 
 ```text
 Critical Warning
@@ -215,23 +245,23 @@ I/O Counters
 Thermal Information
 ```
 
-### What are we trying to establish?
+Health information creates a **baseline** that can later be compared against the drive after workloads, endurance, stress, recovery, or other validation activity.
 
-> **“What health condition is the drive reporting at the beginning of qualification?”**
+### Engineering principle
 
-This creates a health baseline that can later be compared against the drive's state after workloads, stress, endurance, recovery, or other validation activities.
+A reported value is an **observation**.
 
-A reported health value is evidence; the qualification requirement determines whether that observation is acceptable.
+Whether that observation is acceptable depends on the applicable qualification requirement or threshold.
 
 ---
 
 # 8. Compatibility
 
-### What is it?
+### Meaning
 
-Compatibility validates the relationship between the SSD and the **specific platform and configuration** in which the drive is being qualified.
+Compatibility validates the relationship between the SSD and the **specific platform and configuration** in which it is being tested.
 
-Important configuration dimensions include:
+Important dimensions include:
 
 ```text
 SSD
@@ -245,41 +275,37 @@ Operating System
 Controller
 ```
 
-### What are we trying to establish?
+### Main question
 
-> **“Can this drive operate correctly in the intended platform and configuration?”**
+> **Can this drive operate correctly in the intended platform and configuration?**
 
-Therefore, a compatibility result belongs to a **specific test configuration**, not to the SSD in isolation.
+A compatibility result therefore belongs to a **specific test configuration**, not to the SSD in isolation.
 
-For example:
+### Engineering model
 
 ```text
-SSD
- +
-Platform
- +
-BIOS
- +
-OS
- +
-Driver
- +
-Firmware
- +
-PCIe configuration
+Defined Configuration
+        ↓
+Deploy / detect SSD
+        ↓
+Validate required behavior
+        ↓
+Collect evidence
+        ↓
+Associate result with configuration
 ```
 
-The detailed compatibility matrix is addressed later in the dedicated compatibility module.
+Detailed compatibility-matrix engineering is handled later in the dedicated compatibility module.
 
 ---
 
 # 9. Functional Tests
 
-### What is it?
+### Meaning
 
 Functional testing verifies that the SSD performs its required storage functions correctly.
 
-Functional areas include:
+Typical functional areas include:
 
 ```text
 Read
@@ -288,40 +314,40 @@ Flush
 Deallocation
 Format
 Namespace Operations
-Reset / Recovery Behavior
+Reset / Recovery Operations
 Firmware-related Operations
 Negative Tests
 ```
 
-### What are we trying to establish?
+### Main question
 
-> **“Does the drive perform the required storage operations correctly?”**
+> **Does the drive perform the required storage operation correctly?**
 
-The focus here is **correct behavior**, not performance.
+The focus is **correct behavior**, not speed.
 
-For example:
+The basic validation model is:
 
 ```text
-Expected behavior
-      ↓
-Perform operation
-      ↓
-Observe result
-      ↓
-Compare with expectation
+Expected Behavior
+        ↓
+Perform Operation
+        ↓
+Observe Result
+        ↓
+Compare with Expectation
 ```
 
-A successful command completion alone does not establish complete data correctness; data integrity is validated separately.
+A successful command completion alone does not prove that the stored data is correct.
 
 ---
 
 # 10. Performance
 
-### What is it?
+### Meaning
 
-Performance validation characterizes how the SSD behaves under **controlled workloads and configurations**.
+Performance validation characterizes how the drive behaves under controlled workloads and configurations.
 
-Typical workload dimensions include:
+Typical workload variables include:
 
 ```text
 Sequential Read / Write
@@ -330,10 +356,10 @@ Mixed Workloads
 Block Size
 Queue Depth
 Job Count
-Long-Duration Workloads
+Test Duration
 ```
 
-Important measurements include:
+Typical measurements include:
 
 ```text
 IOPS
@@ -345,11 +371,11 @@ CPU Utilization
 Achieved Queue Depth
 ```
 
-### What are we trying to establish?
+### Main question
 
-> **“How does the drive perform under the defined workload and configuration?”**
+> **How does the drive perform under the defined workload and configuration?**
 
-The engineering approach is:
+### Engineering method
 
 ```text
 Baseline
@@ -369,15 +395,15 @@ Detect Anomaly
 Investigate
 ```
 
-Performance numbers must therefore be interpreted together with the test conditions.
+A performance number is meaningful only when the test conditions are understood.
 
 ---
 
 # 11. Stress
 
-### What is it?
+### Meaning
 
-Stress validation subjects the drive to demanding and repeated operating conditions.
+Stress validation subjects the drive and surrounding system to demanding and repeated operating conditions.
 
 Examples include:
 
@@ -394,21 +420,21 @@ Hotplug
 Recovery Events
 ```
 
-### What are we trying to establish?
+### Main question
 
-> **“Does the drive and its surrounding system remain stable under demanding conditions?”**
+> **Does the drive remain stable and functional under demanding conditions?**
 
-Stress focuses on behavior under pressure and repeated activity rather than a single short successful operation.
+Stress focuses on behavior under sustained or repeated pressure rather than a single successful operation.
 
 ---
 
 # 12. Endurance
 
-### What is it?
+### Meaning
 
-Endurance validation evaluates the SSD over **prolonged use and accumulated wear**.
+Endurance evaluates the drive over prolonged operation and accumulated wear.
 
-We observe:
+Typical observations include:
 
 ```text
 Long-Duration Workloads
@@ -418,11 +444,11 @@ Performance Evolution
 Data Integrity
 ```
 
-### What are we trying to establish?
+### Main question
 
-> **“Does the drive continue to behave reliably as workload and wear accumulate?”**
+> **Does the drive continue to behave reliably as workload and wear accumulate?**
 
-The basic engineering model is:
+### Engineering model
 
 ```text
 Initial Baseline
@@ -431,7 +457,7 @@ Long-Term Workload
       ↓
 Accumulated Wear
       ↓
-Health / Performance / Integrity Observation
+Health / Performance / Integrity
       ↓
 Compare with Baseline
 ```
@@ -440,7 +466,7 @@ Compare with Baseline
 
 # 13. Fault Injection
 
-### What is it?
+### Meaning
 
 Fault Injection deliberately introduces controlled failure conditions.
 
@@ -457,11 +483,11 @@ Repeated Reset
 Workload During Failure
 ```
 
-### What are we trying to establish?
+### Main question
 
-> **“How does the device and system behave when a controlled fault is introduced?”**
+> **How does the drive and system behave when a controlled fault occurs?**
 
-Evidence can include:
+The validation engineer observes:
 
 ```text
 Device State
@@ -471,18 +497,19 @@ Error Logs
 Recovery Behavior
 Data State
 Health State
-Regression Impact
 ```
 
-The purpose is not simply to make the device fail. The purpose is to validate **failure handling behavior**.
+The objective is not simply to make the device fail.
+
+The objective is to verify **expected failure-handling behavior**.
 
 ---
 
 # 14. Recovery
 
-### What is it?
+### Meaning
 
-Recovery validates what happens **after a fault or failure condition occurs**.
+Recovery validates what happens after a fault or failure condition.
 
 A simplified recovery sequence is:
 
@@ -504,267 +531,29 @@ Controller / OS Recovery
 Revalidation
 ```
 
-### What are we trying to establish?
+### Main question
 
-> **“After a failure, does the system return to the expected operational state?”**
+> **After a failure, does the system return to the expected operational state?**
 
-Recovery therefore connects directly with fault injection.
+Fault Injection and Recovery are closely related:
 
 ```text
 Fault Injection
-      ↓
-Create / reproduce failure
-      ↓
+→ create / reproduce a controlled fault
+
 Recovery
-      ↓
-Verify correct return to operation
+→ verify correct return to operation
 ```
 
 ---
 
 # 15. Data Integrity
 
-### What is it?
+### Meaning
 
-Data Integrity validation verifies that the **data stored and retrieved from the SSD remains correct**.
+Data Integrity validates that the **data itself remains correct**.
 
-Basic model:
+### Main question
 
-```text
-Known Data
-   ↓
-Write
-   ↓
-Read Back
-   ↓
-Compare
-   ↓
-Data Correct?
-```
-
-Integrity must also be considered across events such as:
-
-```text
-Reset
-Power Cycle
-Firmware Update
-Stress
-Recovery
-```
-
-### Core Principle
-
-```text
-Command success ≠ Data correctness
-```
-
-A command completing successfully does not by itself prove that the expected data was preserved correctly.
-
----
-
-# 16. Regression
-
-### What is it?
-
-Regression verifies that previously validated behavior has not been broken by a change.
-
-Typical changes include:
-
-```text
-Firmware Change
-Driver Change
-OS / Kernel Change
-Platform Change
-Feature Change
-```
-
-### What are we trying to establish?
-
-> **“Did the change introduce a regression in previously working behavior?”**
-
-Basic model:
-
-```text
-Known-Good Baseline
-        ↓
-Apply Change
-        ↓
-Run Appropriate Regression Tests
-        ↓
-Compare Results
-        ↓
-Investigate Differences
-```
-
-Regression later becomes connected to automation, Git, CI, and Jenkins.
-
----
-
-# 17. Qualification
-
-### What is it?
-
-Qualification is the final decision point after the required validation evidence has been collected.
-
-The drive is evaluated across the required qualification areas rather than from a single test result.
-
----
-
-# 18. Qualification Dimensions
-
-The qualification lifecycle covers these key dimensions:
-
-```text
-Functionality
-Compatibility
-Reliability
-Firmware
-Health
-Performance
-Endurance
-Recovery
-Integrity
-```
-
-These dimensions represent **what must ultimately be established about the drive**.
-
-The lifecycle stages provide the path for producing that evidence.
-
----
-
-# 19. Lifecycle vs Qualification Dimensions
-
-These two concepts should not be confused.
-
-### Qualification Lifecycle
-
-Answers:
-
-> **“What sequence do we follow to qualify the drive?”**
-
-```text
-New Drive
- ↓
-Enumeration
- ↓
-Identification
- ↓
-Firmware Check
- ↓
-Health Check
- ↓
-Compatibility
- ↓
-Functional Tests
- ↓
-Performance
- ↓
-Stress
- ↓
-Endurance
- ↓
-Fault Injection
- ↓
-Recovery
- ↓
-Data Integrity
- ↓
-Regression
- ↓
-Qualification
-```
-
-### Qualification Dimensions
-
-Answer:
-
-> **“What aspects of the drive must ultimately be established?”**
-
-```text
-Functionality
-Compatibility
-Reliability
-Firmware
-Health
-Performance
-Endurance
-Recovery
-Integrity
-```
-
-The lifecycle is the **process**.
-
-The dimensions are the **qualification concerns**.
-
----
-
-# 20. Core Engineering Mindset
-
-Drive qualification is an evidence-driven process.
-
-```text
-Expected State
-      ↓
-Observe
-      ↓
-Collect Evidence
-      ↓
-Compare
-      ↓
-Find First Divergence
-      ↓
-Investigate
-      ↓
-Root Cause
-      ↓
-Recover
-      ↓
-Revalidate
-```
-
-The objective is not to run commands randomly or declare the drive successful because it appears in Linux.
-
-The objective is to establish, stage by stage, that the enterprise NVMe SSD behaves as required across the defined qualification dimensions.
-
----
-
-# 21. Definition of Done
-
-```text
-A new enterprise NVMe SSD has arrived.
-
-Can I:
-
-Discover it
- ↓
-Enumerate it
- ↓
-Identify it
- ↓
-Verify firmware
- ↓
-Establish health baseline
- ↓
-Validate compatibility
- ↓
-Validate functionality
- ↓
-Characterize performance
- ↓
-Stress it
- ↓
-Evaluate endurance
- ↓
-Inject controlled faults
- ↓
-Validate recovery
- ↓
-Verify data integrity
- ↓
-Run regression
- ↓
-Make the qualification determination?
-```
-
-That is the purpose of **Drive Qualification Engineering**.
+> **Is the data written
 

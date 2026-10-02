@@ -2,11 +2,36 @@
 
 ## 1. Objective
 
-Drive Qualification Engineering is the process of taking a **new enterprise storage drive**, primarily an **NVMe SSD**, and systematically establishing whether it satisfies the requirements for qualification.
+Drive Qualification Engineering is the process of taking a **new enterprise storage drive**, with **Enterprise NVMe SSD as the primary focus**, and systematically determining whether the drive satisfies the requirements for qualification.
 
-Qualification is not a single test.
+Qualification is not one test.
 
-It is a **sequence of validation stages**, where each stage answers a different question and produces evidence for the final qualification decision.
+The drive must progress through a defined lifecycle, and each stage must establish a specific part of the overall qualification evidence.
+
+The engineering mindset is:
+
+```text
+Expected State
+      ↓
+Observe Actual State
+      ↓
+Collect Evidence
+      ↓
+Compare
+      ↓
+Find First Divergence
+      ↓
+Investigate
+      ↓
+Root Cause
+      ↓
+Recovery
+      ↓
+Revalidate
+```
+
+A command is only a tool for collecting evidence.  
+The **validation question comes first**.
 
 ---
 
@@ -44,31 +69,77 @@ Regression
 Qualification
 ```
 
-The stages are related, but they do not answer the same question.
+Each stage answers a different question.
 
 ---
 
-## 3. New Drive
+# 3. Qualification Dimensions
 
-### Meaning
+The final qualification is concerned with:
 
-A new drive has entered the validation environment and becomes the **device under qualification**.
+```text
+Functionality
+Compatibility
+Reliability
+Firmware
+Health
+Performance
+Endurance
+Recovery
+Integrity
+```
 
-### Main question
+### Lifecycle vs Dimensions
 
-> **What drive has arrived, and is it ready to enter the qualification process?**
+These are related but different concepts.
 
-This is the starting point from which all later evidence is associated with the specific drive.
+**Lifecycle** = the process followed to qualify the drive.
+
+**Qualification dimensions** = the qualities/aspects that must ultimately be established about the drive.
+
+For example, **Reliability** is not a separate lifecycle stage. Reliability evidence is built through areas such as stress, endurance, fault injection, recovery, and integrity validation.
 
 ---
 
-# 4. Enumeration
+# 4. Stage 1 — New Drive
 
-### Meaning
+## What is it?
 
-Enumeration establishes that the newly installed drive can successfully progress through the platform and operating-system discovery path.
+A new enterprise drive has arrived and becomes the **device under qualification**.
 
-For our NVMe validation work, the fixed engineering flow is:
+## Main question
+
+> What drive has arrived, and what validation environment will be used?
+
+Before performing destructive or workload-based testing, the device and the intended test environment must be clearly established.
+
+The drive should eventually be associated with information such as:
+
+```text
+Model
+Serial Number
+Firmware
+Platform
+BIOS
+OS
+Kernel
+Driver
+PCIe configuration
+```
+
+The purpose is to ensure that later test results can be tied to the exact device and environment.
+
+---
+
+# 5. Stage 2 — Enumeration
+
+## What is it?
+
+Enumeration establishes that the newly installed NVMe SSD can successfully progress from **PCIe hardware discovery toward Linux storage visibility**.
+
+## Fixed Engineering Flow
+
+This is the working flow used throughout this project:
 
 ```text
 PCIe device discovered
@@ -88,66 +159,116 @@ Namespaces are discovered/registered
 Linux block device is created
 ```
 
-### Main question
+This is the stable mental model for Module 1. The Master Syllabus describes the underlying discovery/initialization sequence as Power On → PCIe Discovery → Enumeration → Configuration → BAR assignment → Driver Binding → NVMe Initialization.
+
+## Main question
 
 > **How far has the newly installed SSD successfully progressed through the system?**
 
-### Validation approach
+The goal is not simply to ask:
 
-At each point we compare:
+> "Is the SSD detected?"
 
-```text
-Expected State
-      ↓
-Observed State
-      ↓
-Evidence
-      ↓
-First Divergence
+The goal is to determine **where the drive successfully entered the system and where it may have stopped**.
+
+## Evidence
+
+Typical commands:
+
+```bash
+lspci
 ```
 
-We do not jump directly from a symptom to a root cause.
+Used to inspect the PCIe device inventory.
 
-### Example
+```bash
+lspci -vv -s <PCI_ADDRESS>
+```
+
+Used to inspect detailed PCIe configuration, resources, capabilities, and link state.
+
+```bash
+lspci -k -s <PCI_ADDRESS>
+```
+
+Used to identify the kernel driver associated with the device.
+
+```bash
+nvme list
+```
+
+Used to inspect NVMe device/namespace visibility from the Linux NVMe stack.
+
+```bash
+dmesg | grep -i nvme
+journalctl -k | grep -i nvme
+```
+
+Used to investigate kernel/NVMe initialization evidence when something does not progress normally.
+
+## What the evidence means
+
+For example:
 
 ```text
-PCIe                  ✓
-NVMe Controller       ✓
-Namespace             ✗
-Block Device          ✗
+PCIe visible
+        ↓
+lspci evidence
+
+Driver bound
+        ↓
+Kernel driver in use: nvme
+
+NVMe storage visible
+        ↓
+nvme list
+
+Linux block device visible
+        ↓
+/dev/nvme0n1
+```
+
+## First-Divergence Troubleshooting
+
+Never jump from symptom to root cause.
+
+Example:
+
+```text
+PCIe ✓
+NVMe Controller ✓
+Namespace ✗
+Block Device ✗
 ```
 
 The first known divergence is:
 
 ```text
-Controller
-    ↓
+NVMe Controller
+        ↓
 Namespace discovery/registration
+        ✗
 ```
 
-Therefore, investigation starts at that boundary rather than immediately investigating the filesystem or application.
+Investigation should begin at this boundary.
 
-### Typical evidence used during enumeration
+Do not immediately investigate the filesystem or application because those are downstream.
 
-```text
-lspci
-lspci -vv
-lspci -k
-nvme list
-kernel / system logs
-```
+### Core rule
 
-Each command is used to answer a specific question; commands are not the validation methodology by themselves.
+> **Do not troubleshoot the entire system at once. Find the first divergence.**
+
+The Master Syllabus explicitly distinguishes a device missing from `lspci` from a device visible in PCIe but missing from the NVMe path.
 
 ---
 
-# 5. Identification
+# 6. Stage 3 — Identification
 
-### Meaning
+## What is it?
 
-Identification determines **exactly which drive and NVMe controller have been discovered**.
+Identification determines **exactly which drive/controller has been discovered**.
 
-### Main question
+## Main question
 
 > **What device am I actually validating?**
 
@@ -157,12 +278,34 @@ Important identity information includes:
 Vendor
 Model
 Serial Number
-Controller Identity
-Namespace Information
+Controller ID
+Namespace information
 Firmware Revision
+NVMe version
 ```
 
-### Engineering distinction
+## Primary command
+
+```bash
+sudo nvme id-ctrl /dev/nvme0
+```
+
+This retrieves the NVMe controller's Identify information.
+
+Important fields for initial qualification:
+
+```text
+vid
+ssvid
+sn
+mn
+fr
+cntlid
+ver
+nn
+```
+
+### Meaning
 
 ```text
 Model
@@ -173,26 +316,70 @@ Serial Number
 ↓
 Which individual physical drive is this?
 
+Controller ID
+↓
+Which NVMe controller is being examined?
+
 Firmware Revision
 ↓
-Which firmware is installed?
+Which firmware is currently installed?
 ```
 
-The identification information becomes the baseline for the following qualification stages.
+### Controller vs Namespace
+
+Do not confuse:
+
+```text
+NVMe Controller
+```
+
+with:
+
+```text
+NVMe Namespace
+```
+
+or:
+
+```text
+/dev/nvme0n1
+```
+
+Conceptually:
+
+```text
+/dev/nvme0
+    ↓
+NVMe Controller
+    ↓
+Namespace
+    ↓
+/dev/nvme0n1
+```
+
+Namespace-specific information can be inspected separately with:
+
+```bash
+sudo nvme id-ns /dev/nvme0n1
+```
+
+## Engineering principle
+
+Identification creates the **device baseline** that later firmware, health, compatibility, and validation results are associated with.
 
 ---
 
-# 6. Firmware Check
+# 7. Stage 4 — Firmware Check
 
-### Meaning
+## What is it?
 
 Firmware Check determines the firmware revision currently installed on the identified drive and compares it with the required qualification baseline.
 
-### Main question
+## Main question
 
 > **Is this drive running the firmware required for this qualification?**
 
-The validation logic is:
+The validation method is:
 
 ```text
 Expected Firmware
@@ -204,7 +391,25 @@ Compare
 Result
 ```
 
-### Important distinction
+The installed firmware can be observed through:
+
+```bash
+sudo nvme list
+```
+
+or:
+
+```bash
+sudo nvme id-ctrl /dev/nvme0
+```
+
+with the firmware field:
+
+```text
+fr
+```
+
+## Important distinction
 
 ```text
 Firmware identified
@@ -212,23 +417,60 @@ Firmware identified
 Firmware qualified
 ```
 
-A drive reporting a firmware revision does not automatically mean that the revision is approved.
+Example:
 
-Detailed firmware lifecycle activities such as upgrade, activation, downgrade, rollback, recovery, and post-update validation are separate validation activities.
+```text
+Observed FW = 41002131
+```
+
+This is an observation.
+
+To determine qualification status, the approved baseline must also be known.
+
+### Possible outcomes
+
+```text
+Expected = Observed
+        ↓
+Baseline matched
+```
+
+```text
+Expected ≠ Observed
+        ↓
+Firmware mismatch
+        ↓
+Investigate required action
+```
+
+```text
+Expected = Unknown
+        ↓
+Firmware identified
+but qualification result cannot yet be determined
+```
+
+Detailed firmware lifecycle activities such as upgrade, activation, downgrade, rollback, recovery, and post-update verification are handled as deeper firmware validation activities.
 
 ---
 
-# 7. Health Check
+# 8. Stage 5 — Health Check
 
-### Meaning
+## What is it?
 
-Health Check establishes the **current health state reported by the drive** before deeper qualification continues.
+Health Check establishes the **current health state reported by the SSD** and creates a baseline for later comparison.
 
-### Main question
+## Main question
 
-> **What health condition is the drive reporting at this point in time?**
+> **What health condition is the drive reporting at the beginning of qualification?**
 
-Typical health information includes:
+## Primary command
+
+```bash
+sudo nvme smart-log /dev/nvme0
+```
+
+Important information includes:
 
 ```text
 Critical Warning
@@ -237,29 +479,61 @@ Available Spare Threshold
 Percentage Used
 Temperature
 Media Errors
-Error Information
+Error Log Entries
+Data Units Read
+Data Units Written
 Power Cycles
 Power-On Hours
 Unsafe Shutdowns
-I/O Counters
 Thermal Information
 ```
 
-Health information creates a **baseline** that can later be compared against the drive after workloads, endurance, stress, recovery, or other validation activity.
+## Example baseline
 
-### Engineering principle
+A health record can look conceptually like:
 
-A reported value is an **observation**.
+```text
+Critical Warning       : 0
+Available Spare        : 100%
+Spare Threshold        : 50%
+Percentage Used        : 2%
+Temperature            : 34 °C
+Media Errors           : 0
+Error Log Entries      : 0
+Power Cycles           : 1201
+Power-On Hours         : 4556
+Unsafe Shutdowns       : 157
+```
 
-Whether that observation is acceptable depends on the applicable qualification requirement or threshold.
+These values are **observations reported by the drive**.
+
+They are not automatically a qualification PASS/FAIL.
+
+### Important principle
+
+```text
+Observed Health Value
+        ↓
+Compare with Requirement / Threshold
+        ↓
+Determine Significance
+```
+
+A historical counter being non-zero does not automatically mean drive failure.
+
+The health stage establishes the baseline against which later stress, endurance, fault, recovery, and integrity behavior can be compared.
 
 ---
 
-# 8. Compatibility
+# 9. Stage 6 — Compatibility
 
-### Meaning
+## What is it?
 
-Compatibility validates the relationship between the SSD and the **specific platform and configuration** in which it is being tested.
+Compatibility validates the SSD together with the **specific platform and software configuration** in which it is being tested.
+
+## Main question
+
+> **Can this drive operate correctly in the intended platform and configuration?**
 
 Important dimensions include:
 
@@ -275,35 +549,64 @@ Operating System
 Controller
 ```
 
-### Main question
+## Environment capture
 
-> **Can this drive operate correctly in the intended platform and configuration?**
+Useful commands include:
 
-A compatibility result therefore belongs to a **specific test configuration**, not to the SSD in isolation.
-
-### Engineering model
-
-```text
-Defined Configuration
-        ↓
-Deploy / detect SSD
-        ↓
-Validate required behavior
-        ↓
-Collect evidence
-        ↓
-Associate result with configuration
+```bash
+sudo dmidecode -s system-product-name
+sudo dmidecode -s bios-version
+uname -r
+cat /etc/os-release
 ```
 
-Detailed compatibility-matrix engineering is handled later in the dedicated compatibility module.
+PCIe and driver state can be captured with:
+
+```bash
+lspci
+lspci -vv -s <PCI_ADDRESS>
+lspci -k -s <PCI_ADDRESS>
+```
+
+## Engineering principle
+
+Do not simply report:
+
+> "The SSD is compatible."
+
+Instead associate the result with the exact configuration:
+
+```text
+SSD
++
+Platform
++
+BIOS
++
+OS
++
+Kernel
++
+Driver
++
+Firmware
++
+PCIe configuration
+```
+
+The detailed compatibility matrix is covered later in the dedicated compatibility module.
 
 ---
 
-# 9. Functional Tests
+# 10. Stage 7 — Functional Tests
 
-### Meaning
+## What is it?
 
-Functional testing verifies that the SSD performs its required storage functions correctly.
+Functional testing verifies that the SSD performs its required storage operations **correctly**.
+
+## Main question
+
+> **Does the drive perform the required storage functions correctly?**
 
 Typical functional areas include:
 
@@ -313,19 +616,13 @@ Write
 Flush
 Deallocation
 Format
-Namespace Operations
-Reset / Recovery Operations
-Firmware-related Operations
-Negative Tests
+Namespace operations
+Reset / recovery behavior
+Firmware-related operations
+Negative tests
 ```
 
-### Main question
-
-> **Does the drive perform the required storage operation correctly?**
-
-The focus is **correct behavior**, not speed.
-
-The basic validation model is:
+## Functional validation model
 
 ```text
 Expected Behavior
@@ -334,20 +631,47 @@ Perform Operation
         ↓
 Observe Result
         ↓
-Compare with Expectation
+Compare
 ```
 
-A successful command completion alone does not prove that the stored data is correct.
+The focus is **correct behavior**, not speed.
+
+Before any destructive functional testing, the target device must be verified as safe.
+
+Useful inspection commands:
+
+```bash
+lsblk -o NAME,TYPE,SIZE,FSTYPE,MOUNTPOINTS,MODEL,SERIAL
+findmnt
+```
+
+Only an isolated, intentionally selected test device should be used for destructive operations.
+
+### Important distinction
+
+```text
+Command completed successfully
+        ≠
+Everything about the storage behavior has been proven correct
+```
+
+Data correctness is treated separately under Data Integrity.
+
+The functional validation scope is defined in the Master Syllabus.
 
 ---
 
-# 10. Performance
+# 11. Stage 8 — Performance
 
-### Meaning
+## What is it?
 
-Performance validation characterizes how the drive behaves under controlled workloads and configurations.
+Performance validation characterizes the SSD under **controlled workloads and configurations**.
 
-Typical workload variables include:
+## Main question
+
+> **How does the drive perform under the defined workload?**
+
+Typical workload dimensions:
 
 ```text
 Sequential Read / Write
@@ -359,7 +683,7 @@ Job Count
 Test Duration
 ```
 
-Typical measurements include:
+Important measurements:
 
 ```text
 IOPS
@@ -371,11 +695,15 @@ CPU Utilization
 Achieved Queue Depth
 ```
 
-### Main question
+The primary workload tool is commonly:
 
-> **How does the drive perform under the defined workload and configuration?**
+```bash
+fio
+```
 
-### Engineering method
+with a controlled job/configuration.
+
+## Engineering method
 
 ```text
 Baseline
@@ -395,17 +723,41 @@ Detect Anomaly
 Investigate
 ```
 
-A performance number is meaningful only when the test conditions are understood.
+A performance result is meaningful only when the test conditions are captured.
+
+Possible investigation areas include:
+
+```text
+Queue Depth
+Block Size
+Workload Pattern
+Firmware
+Garbage Collection
+NAND Behavior
+PCIe Link
+CPU
+NUMA
+Driver
+OS
+Temperature
+Background Operations
+```
+
+The Master Syllabus defines this controlled methodology explicitly.
 
 ---
 
-# 11. Stress
+# 12. Stage 9 — Stress
 
-### Meaning
+## What is it?
 
-Stress validation subjects the drive and surrounding system to demanding and repeated operating conditions.
+Stress validation subjects the drive and surrounding system to demanding and repeated conditions.
 
-Examples include:
+## Main question
+
+> **Does the drive remain stable and functional under demanding conditions?**
+
+Typical conditions:
 
 ```text
 Sustained I/O
@@ -420,57 +772,83 @@ Hotplug
 Recovery Events
 ```
 
-### Main question
+Performance is not the only concern.
 
-> **Does the drive remain stable and functional under demanding conditions?**
+We watch for:
 
-Stress focuses on behavior under sustained or repeated pressure rather than a single successful operation.
+```text
+Errors
+Timeouts
+Device Disappearance
+Unexpected Resets
+Health Changes
+Performance Degradation
+Recovery Problems
+```
+
+Stress therefore extends normal functional validation into **sustained/repeated operating conditions**.
 
 ---
 
-# 12. Endurance
+# 13. Stage 10 — Endurance
 
-### Meaning
+## What is it?
 
-Endurance evaluates the drive over prolonged operation and accumulated wear.
+Endurance evaluates behavior over **prolonged workload and accumulated wear**.
 
-Typical observations include:
-
-```text
-Long-Duration Workloads
-Wear
-Health Evolution
-Performance Evolution
-Data Integrity
-```
-
-### Main question
+## Main question
 
 > **Does the drive continue to behave reliably as workload and wear accumulate?**
 
-### Engineering model
+Typical observations:
+
+```text
+Health Evolution
+Wear
+Performance Evolution
+Data Integrity
+Long-Duration Behavior
+```
+
+Engineering model:
 
 ```text
 Initial Baseline
       ↓
 Long-Term Workload
       ↓
-Accumulated Wear
+Wear Accumulates
       ↓
-Health / Performance / Integrity
+Measure Health / Performance / Integrity
       ↓
 Compare with Baseline
 ```
 
+Stress and endurance are related but not identical:
+
+```text
+Stress
+↓
+Can it remain stable under demanding conditions?
+
+Endurance
+↓
+Can it remain reliable over prolonged use and accumulated wear?
+```
+
 ---
 
-# 13. Fault Injection
+# 14. Stage 11 — Fault Injection
 
-### Meaning
+## What is it?
 
-Fault Injection deliberately introduces controlled failure conditions.
+Fault Injection deliberately introduces a controlled failure condition.
 
-Examples include:
+## Main question
+
+> **How does the drive and system behave when a controlled fault occurs?**
+
+Examples:
 
 ```text
 Hot Removal / Insertion
@@ -483,11 +861,7 @@ Repeated Reset
 Workload During Failure
 ```
 
-### Main question
-
-> **How does the drive and system behave when a controlled fault occurs?**
-
-The validation engineer observes:
+Evidence may include:
 
 ```text
 Device State
@@ -497,21 +871,26 @@ Error Logs
 Recovery Behavior
 Data State
 Health State
+Regression Impact
 ```
 
-The objective is not simply to make the device fail.
+The objective is not merely to make the device fail.
 
-The objective is to verify **expected failure-handling behavior**.
+The objective is to verify **failure-handling behavior**.
 
 ---
 
-# 14. Recovery
+# 15. Stage 12 — Recovery
 
-### Meaning
+## What is it?
 
-Recovery validates what happens after a fault or failure condition.
+Recovery validates what happens **after a failure occurs**.
 
-A simplified recovery sequence is:
+## Main question
+
+> **Does the system return to the expected operational state after the fault?**
+
+Conceptual recovery path:
 
 ```text
 Failure
@@ -531,29 +910,327 @@ Controller / OS Recovery
 Revalidation
 ```
 
-### Main question
+Useful evidence during recovery analysis:
 
-> **After a failure, does the system return to the expected operational state?**
+```bash
+dmesg
+journalctl -k
+lspci
+nvme list
+```
 
-Fault Injection and Recovery are closely related:
+The exact commands depend on the failure being investigated.
+
+### Relationship with Fault Injection
 
 ```text
 Fault Injection
-→ create / reproduce a controlled fault
+↓
+Create / reproduce controlled failure
 
 Recovery
-→ verify correct return to operation
+↓
+Verify correct return to operation
 ```
+
+The Master Syllabus includes timeout handling, reset, queue recreation, reinitialization, PCIe recovery, re-enumeration, and OS recovery.
 
 ---
 
-# 15. Data Integrity
+# 16. Stage 13 — Data Integrity
 
-### Meaning
+## What is it?
 
-Data Integrity validates that the **data itself remains correct**.
+Data Integrity validates that the **data itself remains correct**, not merely that commands complete.
 
-### Main question
+## Main question
 
-> **Is the data written
+> **Is the data written to and read from the drive still correct?**
 
+Basic model:
+
+```text
+Known Data
+   ↓
+Write
+   ↓
+Read Back
+   ↓
+Compare
+   ↓
+Correct?
+```
+
+Integrity should also be considered across:
+
+```text
+Normal I/O
+Reset
+Power Cycle
+Firmware Update
+Stress
+Recovery
+```
+
+### Core principle
+
+```text
+Command success
+      ≠
+Data correctness
+```
+
+Evidence may use known data patterns, checksums, verification methods, and before/after comparisons.
+
+The Master Syllabus explicitly makes this distinction.
+
+---
+
+# 17. Stage 14 — Regression
+
+## What is it?
+
+Regression verifies that previously validated behavior has not been broken by a change.
+
+## Main question
+
+> **Did the change introduce a regression?**
+
+Typical changes:
+
+```text
+Firmware
+Driver
+OS / Kernel
+Platform
+Feature
+Configuration
+```
+
+Engineering model:
+
+```text
+Known-Good Baseline
+        ↓
+Apply Change
+        ↓
+Run Relevant Tests
+        ↓
+Compare Results
+        ↓
+Investigate Difference
+```
+
+Useful engineering tools later include:
+
+```text
+Git
+Pytest
+Jenkins / CI
+```
+
+The detailed automation/CI implementation is handled later in the roadmap.
+
+---
+
+# 18. Stage 15 — Qualification
+
+## What is it?
+
+Qualification is the final determination made from the accumulated validation evidence.
+
+The drive is not qualified because:
+
+```text
+lspci works
+```
+
+or because:
+
+```text
+nvme list works
+```
+
+or because:
+
+```text
+one FIO test looks good
+```
+
+Qualification requires evidence across the required dimensions:
+
+```text
+Functionality
+Compatibility
+Reliability
+Firmware
+Health
+Performance
+Endurance
+Recovery
+Integrity
+```
+
+The exact acceptance criteria depend on the qualification requirements being applied.
+
+---
+
+# 19. Engineering Evidence Model
+
+The entire module follows one common engineering method:
+
+```text
+WHAT SHOULD HAPPEN?
+        ↓
+WHAT ACTUALLY HAPPENED?
+        ↓
+WHAT EVIDENCE PROVES IT?
+        ↓
+DO THEY MATCH?
+        ↓
+YES → Continue
+NO  → Find First Divergence
+```
+
+For troubleshooting:
+
+```text
+Observation
+    ↓
+Hypothesis
+    ↓
+Evidence
+    ↓
+Root Cause
+    ↓
+Recovery
+    ↓
+Revalidation
+```
+
+### Example
+
+```text
+PCIe                 ✓
+NVMe Controller      ✓
+Namespace            ✗
+Block Device         ✗
+```
+
+Correct reasoning:
+
+> The first known divergence is at the controller-to-namespace boundary; investigation should focus there.
+
+Incorrect reasoning:
+
+> The SSD is defective.
+
+The second statement is unsupported without further evidence.
+
+---
+
+# 20. Practical Enumeration Evidence — Hands-on Learning Example
+
+During the learning exercise on a real NVMe laptop, the following progression was observed:
+
+```text
+lspci
+ ↓
+NVMe PCIe device visible
+```
+
+```text
+lspci -k -s <PCI_ADDRESS>
+ ↓
+Kernel driver in use: nvme
+```
+
+```text
+lspci -vv -s <PCI_ADDRESS>
+ ↓
+PCIe configuration/resources/link information
+```
+
+```text
+nvme list
+ ↓
+NVMe namespace / Linux block-device visibility
+```
+
+```text
+nvme id-ctrl /dev/nvme0
+ ↓
+Controller identity
+```
+
+```text
+nvme smart-log /dev/nvme0
+ ↓
+Health baseline
+```
+
+Platform configuration was captured using:
+
+```bash
+sudo dmidecode -s system-product-name
+sudo dmidecode -s bios-version
+uname -r
+cat /etc/os-release
+```
+
+This hands-on work was used to understand the **validation reasoning and evidence chain**; it does not by itself constitute full enterprise qualification.
+
+---
+
+# 21. Definition of Done
+
+A new enterprise NVMe SSD arrives.
+
+The validation engineer should be able to reason through:
+
+```text
+New Drive
+ ↓
+Enumeration
+ ↓
+Identification
+ ↓
+Firmware Check
+ ↓
+Health Check
+ ↓
+Compatibility
+ ↓
+Functional Tests
+ ↓
+Performance
+ ↓
+Stress
+ ↓
+Endurance
+ ↓
+Fault Injection
+ ↓
+Recovery
+ ↓
+Data Integrity
+ ↓
+Regression
+ ↓
+Qualification
+```
+
+and answer for each stage:
+
+```text
+What is this stage?
+Why does it exist?
+What am I trying to prove?
+What evidence proves it?
+What could fail here?
+Where is the first divergence?
+What should I investigate?
+How do I revalidate after recovery?
+```
+
+That is the foundation of **Drive Qualification Engineering**.

@@ -669,7 +669,7 @@ The validation engineer must establish what happened, collect evidence, isolate 
 ```text
                     Detect.Quiet
                          |
-           12 ms timeout or EI exit
+           12 ms timeout or Electrical Idle exit
                          |
                          v
                     Detect.Active

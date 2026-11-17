@@ -1665,3 +1665,44 @@ The important engineering capability is to explain:
 - How to investigate an NVMe SSD that repeatedly fails to progress beyond Polling.Configuration.
 
 ---
+---
+
+# Polling.Speed
+
+## Purpose
+
+`Polling.Speed` is a defined LTSSM substate associated with changing the PCIe Link data rate during the Polling stage.
+
+In earlier PCIe Link-training specifications, it was used to move the Link from its initial 2.5 GT/s training rate to the highest common data rate supported by both link partners before proceeding to the main Configuration state.
+
+## Historical Operations
+
+The earlier Polling.Speed procedure involved:
+
+- The Transmitter entering Electrical Idle.
+- Changing the operating data rate to the highest common supported data rate.
+- Transmitting at least 1,024 consecutive TS1 Ordered Sets on all Lanes at the selected rate.
+- Allowing sufficient time for the receiver to establish Bit Lock at the new data rate.
+- Transitioning to the main Configuration state after completing the required TS1 transmission.
+
+## Polling.Speed in PCIe 5.0
+
+In PCIe 5.0, Polling.Speed is unreachable during normal Link initialization.
+
+The reason is that PCIe 5.0 establishes the Link at 2.5 GT/s and changes to higher data rates through the Recovery state after reaching L0.
+
+The sequence is:
+
+- Both link partners initially establish the Link at 2.5 GT/s.
+- The Link completes Configuration and reaches L0.
+- Both Ports' supported data rates are established through the Configuration process.
+- A higher-speed transition is subsequently initiated through Recovery.
+
+Therefore, Polling.Speed is not part of the normal PCIe 5.0 initial Link-up sequence.
+
+## Essential Understanding
+
+- Polling.Speed represents an earlier approach to changing the Link data rate during initial Link training.
+- Its historical operation involved Electrical Idle, data-rate selection and TS1 transmission at the selected rate.
+- PCIe 5.0 does not use Polling.Speed for normal initial Link establishment.
+- Higher-speed transitions in PCIe 5.0 are performed through Recovery after reaching L0.

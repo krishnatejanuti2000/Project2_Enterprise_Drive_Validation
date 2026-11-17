@@ -1117,3 +1117,551 @@ The important engineering capability is to explain:
 - Why the Port must complete Polling and Configuration again before reaching L0.
 
 ---
+# Polling.Configuration
+
+## Purpose
+
+`Polling.Configuration` continues the initial PCIe Link-training process after Polling.Active.
+
+Its purpose is to establish the additional training conditions required before entering the main Configuration state.
+
+During Polling.Configuration, the two PCIe link partners exchange TS2 Ordered Sets.
+
+The receiver examines the incoming TS2 Ordered Sets to determine whether the required consecutive training sequences have been received.
+
+The transmitter also has to satisfy the specified TS2 transmission requirement.
+
+Polling.Configuration performs the following operations:
+
+- Continues initial Link training using TS2 Ordered Sets.
+- Performs the required receiver polarity correction, if necessary.
+- Resets the Transmit Margin field to the normal operating-range selection.
+- Updates the Polling.Compliance sequence setting when required.
+- Establishes the required receiver and transmitter TS2 conditions.
+- Determines whether the Port can proceed to the main Configuration state.
+
+Successful completion of Polling.Configuration does not mean that the final PCIe Link has already been established.
+
+Link-width negotiation and Lane Number assignment take place in the subsequent Configuration substates.
+
+## Entry into Polling.Configuration
+
+The LTSSM enters Polling.Configuration from Polling.Active when the applicable transition requirements are satisfied.
+
+There are two possible entry paths.
+
+### Normal Entry from Polling.Active
+
+The normal Polling.Active transition requires:
+
+- The local transmitter must transmit at least 1,024 TS1 Ordered Sets.
+- The local receiver must receive eight consecutive qualifying training sequences on every Lane that detected a receiver during Detect.
+
+When both conditions are satisfied before the 24 ms timeout:
+
+`Polling.Active → Polling.Configuration`
+
+### Entry Through the Polling.Active Timeout — Outcome A
+
+If the normal transition conditions are not satisfied before the 24 ms timeout expires, the LTSSM evaluates the specified fallback conditions.
+
+The LTSSM can still enter Polling.Configuration when all three Outcome A conditions are satisfied:
+
+- At least one Lane that detected a receiver during Detect must receive eight consecutive qualifying training sequences, or their complement.
+- At least 1,024 TS1 Ordered Sets must be transmitted after receiving one TS1 or TS2 Ordered Set.
+- The implementation-defined predetermined set of Lanes must satisfy the specified Electrical Idle exit requirement.
+
+Any Lane that receives the eight consecutive qualifying training sequences must also have detected an Electrical Idle exit at least once since entering Polling.Active.
+
+When all three conditions are satisfied:
+
+`Polling.Active → Polling.Configuration`
+
+The two entry paths have different requirements in Polling.Active, but both lead to the same Polling.Configuration substate.
+
+## Entry Actions
+
+When the LTSSM enters Polling.Configuration, the following entry actions apply:
+
+- The receiver must invert polarity if necessary.
+- The Transmit Margin field of the Link Control 2 register must be reset to `000b`.
+- The transmitter's Polling.Compliance sequence setting must be updated if required by the specification.
+
+### Receiver Polarity Correction
+
+The receiver must correct Lane polarity inversion if necessary.
+
+Consider two connected PCIe Ports:
+
+```text
+Port A                              Port B
+
+A_TX  --------------------------->  B_RX
+A_RX  <---------------------------  B_TX
+```
+
+Suppose the signal transmitted by A_TX reaches B_RX with inverted polarity.
+
+B_RX must identify the inversion and compensate for it internally.
+
+The receiver performs this correction. The transmitter does not need to modify its transmitted data to compensate for the inversion.
+
+Both directions operate independently.
+
+- If A_RX detects polarity inversion in the signal received from B_TX, A_RX performs the correction.
+- If B_RX detects polarity inversion in the signal received from A_TX, B_RX performs the correction.
+
+Polarity detection and correction are supported independently for each receiver Lane.
+
+**When must polarity correction be completed?**
+
+Polarity inversion may already have been detected and corrected during Polling.Active.
+
+However, the PCIe specification requires polarity correction, if necessary, to be complete before the receiver exits Polling.Configuration.
+
+Therefore, polarity correction does not necessarily have to be performed again when entering Polling.Configuration.
+
+The important requirement is that the receiver must complete the correction before leaving this substate.
+
+### Reset the Transmit Margin Field
+
+The Transmit Margin field is present in the Link Control 2 register.
+
+It controls the transmitter's non-de-emphasized voltage level at the transmitter package pins.
+
+During electrical compliance testing, a particular Transmit Margin selection may be used to evaluate transmitter electrical behaviour.
+
+When the Port enters Polling.Configuration, the Transmit Margin field must be reset to:
+
+`Transmit Margin = 000b`
+
+`000b` represents the normal operating-range voltage selection.
+
+For example:
+
+- A Port enters Polling.Compliance for electrical testing.
+- A non-default Transmit Margin value may have been selected for that testing.
+- The Port subsequently enters Polling.Configuration.
+- The Transmit Margin field must be reset to `000b`.
+
+This restores the normal operating-range voltage selection instead of retaining a special compliance-testing selection.
+
+**Important:**
+
+- This action changes the transmitter voltage-level selection.
+- It does not change the PCIe data rate.
+- It does not assign Link Numbers or Lane Numbers.
+- It does not perform equalization.
+
+The reset is required on every entry into Polling.Configuration, including a direct transition from Polling.Active.
+
+### Update the Polling.Compliance Sequence Setting
+
+The third entry action concerns the transmitter's future PCIe compliance-testing sequence.
+
+It is important not to confuse this sequence with the TS1 and TS2 Ordered Set training sequences.
+
+PCIe defines a separate sequence of compliance-test settings.
+
+Each setting identifies a particular combination of:
+
+- Compliance-pattern data rate.
+- Transmitter de-emphasis or preset.
+
+For example, the default compliance-setting sequence contains settings such as:
+
+| Setting | Compliance Data Rate | Transmitter Setting |
+|---|---:|---|
+| #1 | 2.5 GT/s | -3.5 dB |
+| #2 | 5.0 GT/s | -3.5 dB |
+| #3 | 5.0 GT/s | -6 dB |
+| #4–#14 | 8.0 GT/s | Different transmitter presets |
+
+When the default compliance-setting sequence applies, successive entries into Polling.Compliance progress through the defined settings.
+
+The Port therefore maintains a position in this compliance-test sequence.
+
+The PCIe specification requires the sequence to be set to Setting #1 in Polling.Configuration when either of the following conditions applies:
+
+- The Port supports 16.0 GT/s or higher data rates.
+- The Port's Receivers do not meet the ZRX-DC specification for 2.5 GT/s when operating at 8.0 GT/s or higher data rates.
+
+All Ports are permitted to reset the sequence to Setting #1, even when neither mandatory condition applies.
+
+**Example:**
+
+Suppose a Port has progressed to Setting #4 in its default compliance-test sequence.
+
+When it enters Polling.Configuration, the applicable requirement may reset the sequence to Setting #1.
+
+The next applicable entry into Polling.Compliance using the default sequence will then start from Setting #1.
+
+**Important:**
+
+- This action does not reset TS1 or TS2 training.
+- The Port does not transmit compliance patterns as part of this entry action.
+- It updates the selection position for a subsequent compliance-testing entry.
+
+## TS2 Ordered Set Transmission
+
+After completing the entry actions, the Port begins transmitting TS2 Ordered Sets.
+
+During Polling.Configuration, the transmitter sends TS2 Ordered Sets on all Lanes that detected a receiver during Detect.
+
+The participating physical Lanes are determined using the receiver-detection results obtained during Detect.
+
+Consider an example with four physical Lanes.
+
+Suppose Port A detected receivers on Lane 0, Lane 1 and Lane 2, but did not detect a receiver on Lane 3.
+
+A_TX sends TS2 Ordered Sets on the three Lanes that detected receivers.
+
+| Port A Physical Lane | Receiver Detected During Detect? | TS2 Transmission |
+|---|---|---|
+| Lane 0 | Yes | Yes |
+| Lane 1 | Yes | Yes |
+| Lane 2 | Yes | Yes |
+| Lane 3 | No | No |
+
+Port B performs its own independent operation.
+
+B_TX sends TS2 Ordered Sets on the Lanes that detected receivers during Port B's own Detect process.
+
+Port A and Port B do not automatically use identical receiver-detected Lane sets.
+
+### Link Number and Lane Number in TS2
+
+During Polling.Configuration, both the Link Number and Lane Number fields remain set to PAD.
+
+| TS2 Field | Value |
+|---|---|
+| Link Number | PAD |
+| Lane Number | PAD |
+
+PAD is a placeholder used during the early Link-training process.
+
+At this stage:
+
+- The hardware already knows which physical Lanes detected receivers during Detect.
+- The Link Number has not yet been assigned in the TS2 Ordered Sets.
+- The Lane Number has not yet been assigned in the TS2 Ordered Sets.
+
+The physical receiver-detection results and logical Lane Number assignments are two separate things.
+
+For example, the hardware can identify that physical Lane 0 detected a receiver without having assigned that Lane its logical PCIe Lane Number.
+
+The Link Number and Lane Number are established during the subsequent Configuration process.
+
+### Data Rate Identifier in TS2
+
+The TS2 Ordered Set contains a Data Rate Identifier.
+
+The Data Rate Identifier advertises all data rates supported by the transmitting Port, including rates that the Port does not intend to use.
+
+For example, a Port may support:
+
+- 2.5 GT/s
+- 5.0 GT/s
+- 8.0 GT/s
+- 16.0 GT/s
+- 32.0 GT/s
+
+Its TS2 Ordered Sets advertise these supported data rates.
+
+However, advertising support for 32.0 GT/s does not mean that the transmitter is currently operating at 32.0 GT/s.
+
+Under the PCIe 5.0 initial Link-establishment baseline, the initial training rate remains 2.5 GT/s.
+
+Important:
+
+- The Data Rate Identifier advertises supported data rates.
+- Advertising a higher data rate does not mean that the transmitter is currently operating at that rate.
+- Initial Link training and TS2 transmission take place at 2.5 GT/s.
+- A subsequent higher-speed change is performed through the specified PCIe speed-change process.
+
+## Normal Transition: Polling.Configuration to Configuration
+
+The normal transition from Polling.Configuration to the main Configuration state requires two independent conditions.
+
+Both conditions must be satisfied.
+
+### Condition 1 — Receiver Requirement
+
+The receiver must receive:
+
+**Eight consecutive TS2 Ordered Sets with Link Number = PAD and Lane Number = PAD.**
+
+These TS2 Ordered Sets must be received on any Lane or Lanes that detected a receiver during Detect.
+
+This is different from the normal Polling.Active receiver requirement.
+
+In Polling.Active:
+
+- Every Lane that detected a receiver during Detect must independently satisfy the eight-consecutive-qualifying-training-sequence requirement.
+
+In Polling.Configuration:
+
+- At least one Lane that detected a receiver during Detect must receive eight consecutive qualifying TS2 Ordered Sets.
+- All receiver-detected Lanes do not have to satisfy this condition.
+
+**At least one receiver-detected Lane is sufficient.**
+
+#### Example — Four Receiver-Detected Lanes
+
+Suppose A_RX detected receivers on all four physical Lanes during Detect.
+
+| Port A Receiver Lane | Eight Consecutive Qualifying TS2 Received? |
+|---|---|
+| Lane 0 | Yes |
+| Lane 1 | No |
+| Lane 2 | No |
+| Lane 3 | No |
+
+The receiver requirement is satisfied because Lane 0 received eight consecutive qualifying TS2 Ordered Sets.
+
+Lanes 1, 2 and 3 do not have to satisfy the same eight-sequence condition.
+
+If all four Lanes receive eight consecutive qualifying TS2 Ordered Sets, the requirement is also satisfied, but that is not mandatory.
+
+**Remember:**
+
+The receiver requirement is based on at least one Lane from the set of Lanes that detected receivers during Detect.
+
+### Condition 2 — Transmitter Requirement
+
+The transmitter must transmit at least 16 TS2 Ordered Sets after its local receiver has received one TS2 Ordered Set.
+
+Consider two connected PCIe Ports:
+
+```text
+Port A                              Port B
+
+A_TX  --------------------------->  B_RX
+A_RX  <---------------------------  B_TX
+```
+
+The operation for Port A is as follows.
+
+**A_RX Receives One TS2**
+
+B_TX transmits TS2 Ordered Sets towards A_RX.
+
+A_RX receives one TS2 Ordered Set.
+
+This reception establishes the starting event for Port A's transmitter requirement.
+
+**A_TX Transmits at Least 16 TS2 Ordered Sets**
+
+After A_RX receives one TS2 Ordered Set, A_TX must transmit at least 16 TS2 Ordered Sets towards B_RX.
+
+```text
+A_RX receives one TS2 from B_TX
+               |
+               v
+A_TX transmits at least 16 TS2
+               |
+               v
+      Transmitter requirement
+           is satisfied
+```
+
+These are separate receiver and transmitter operations.
+
+The transmitter requirement is not a requirement to transmit 16 additional TS2 Ordered Sets for every TS2 received.
+
+It must also not be confused with the eight-consecutive-TS2 receiver requirement.
+
+### Independent LTSSM Operation at Both Ports
+
+Each PCIe Port has its own LTSSM and independently evaluates its transition requirements.
+
+For example:
+
+**Port A:**
+
+- A_RX receives one TS2 Ordered Set from B_TX.
+- A_TX subsequently transmits at least 16 TS2 Ordered Sets.
+- A_RX also satisfies the eight-consecutive-TS2 receiver requirement on at least one receiver-detected Lane.
+- Port A can transition to Configuration.Linkwidth.Start when both conditions are satisfied.
+
+**Port B:**
+
+- B_RX receives one TS2 Ordered Set from A_TX.
+- B_TX subsequently transmits at least 16 TS2 Ordered Sets.
+- B_RX also satisfies the eight-consecutive-TS2 receiver requirement on at least one receiver-detected Lane.
+- Port B can transition to Configuration.Linkwidth.Start when both conditions are satisfied.
+
+The two Ports evaluate their conditions independently.
+
+Therefore, one Port can enter Configuration.Linkwidth.Start before the other Port.
+
+### Both Conditions Must Be Satisfied
+
+| Condition | Requirement |
+|---|---|
+| Receiver requirement | Eight consecutive TS2 Ordered Sets with PAD/PAD received on at least one Lane that detected a receiver during Detect |
+| Transmitter requirement | At least 16 TS2 Ordered Sets transmitted after the local receiver receives one TS2 Ordered Set |
+
+Both conditions must be satisfied for the normal transition.
+
+When they are satisfied:
+
+`Polling.Configuration → Configuration.Linkwidth.Start`
+
+Configuration.Linkwidth.Start is the first substate of the main Configuration state.
+
+The normal transition can occur as soon as both conditions are satisfied. The Port does not have to wait for the complete 48 ms timeout.
+
+## Polling.Configuration — 48 ms Timeout and Failure Behaviour
+
+### Purpose of the 48 ms Timeout
+
+When a Port enters Polling.Configuration, a 48 ms timeout period applies.
+
+This timeout is separate from the 24 ms timeout used in Polling.Active.
+
+During this period, the link partners continue transmitting and receiving TS2 Ordered Sets and attempt to satisfy both normal transition conditions.
+
+If both conditions are satisfied before the 48 ms timeout expires:
+
+`Polling.Configuration → Configuration.Linkwidth.Start`
+
+The Port does not have to wait for the complete 48 ms period.
+
+However, if both normal transition requirements are not satisfied within the 48 ms timeout, the LTSSM returns to Detect.
+
+**Transition:**
+
+`Polling.Configuration → Detect`
+
+The next entry into Detect begins with Detect.Quiet.
+
+The Port subsequently restarts the receiver-detection process.
+
+### No Three-Way Timeout Fallback
+
+Unlike Polling.Active, Polling.Configuration does not have three alternative fallback outcomes.
+
+In Polling.Active, the 24 ms timeout evaluates three possible outcomes:
+
+- Outcome A — Continue to Polling.Configuration.
+- Outcome B — Enter Polling.Compliance.
+- Outcome C — Return to Detect.Quiet.
+
+In Polling.Configuration, the 48 ms timeout has one specified timeout outcome when the normal transition requirements are not satisfied:
+
+`Polling.Configuration → Detect`
+
+There is no equivalent three-way fallback decision.
+
+### Polling.Configuration Timeout — Complete Sequence
+
+Suppose Port A fails to satisfy both normal transition conditions within 48 ms.
+
+The progression is:
+
+```text
+Polling.Configuration
+          |
+          | 48 ms timeout expires
+          | without satisfying both conditions
+          v
+      Detect.Quiet
+          |
+          v
+      Detect.Active
+          |
+          | Receiver Detection
+          v
+      Polling.Active
+          |
+          | TS1 training requirements
+          v
+  Polling.Configuration
+```
+
+The Port restarts the receiver-detection and Link-training process.
+
+Each Port has its own LTSSM. The Port experiencing the timeout follows its own specified transition; both link partners must not be assumed to transition simultaneously.
+
+Returning to Detect does not automatically prove that the SSD or its link partner is defective.
+
+The actual root cause must be established through further validation and debugging.
+
+## Enterprise NVMe SSD Validation Relevance
+
+If an NVMe SSD repeatedly enters Polling.Configuration but fails to progress to Configuration.Linkwidth.Start, the validation engineer must determine why the normal TS2 transition requirements are not being satisfied.
+
+The investigation should include:
+
+### TS2 Ordered Set Transmission
+
+- Verify that the transmitter sends TS2 Ordered Sets on all Lanes that detected receivers during Detect.
+- Check that the Link Number and Lane Number fields contain PAD.
+- Check the Data Rate Identifier information.
+- Confirm that initial training is operating at 2.5 GT/s.
+
+### Receiver Behaviour
+
+- Verify that the receiver recognizes TS2 Ordered Sets.
+- Check whether eight consecutive qualifying TS2 Ordered Sets are received on at least one receiver-detected Lane.
+- Investigate Lane-specific reception problems.
+- Check whether polarity correction has been completed where necessary.
+
+### Transmitter Behaviour
+
+- Verify that the local receiver has received a TS2 Ordered Set.
+- Verify that the local transmitter subsequently transmits at least 16 TS2 Ordered Sets.
+- Confirm that the transmitter requirement is satisfied independently of the receiver requirement.
+
+### Link Partner and Physical Connection
+
+- Compare Root Port and Endpoint training behaviour.
+- Investigate physical Lane connectivity.
+- Examine relevant Electrical Idle and signal-reception behaviour.
+- Collect available PCIe protocol-analyser traces and hardware-debug information.
+
+### Understanding a Polling.Configuration Timeout
+
+If a Port returns to Detect after the 48 ms timeout, it indicates that the required TS2 training conditions were not completed within the specified period.
+
+The timeout alone does not identify the root cause.
+
+The validation engineer must use the available protocol and hardware evidence to determine whether the issue is related to:
+
+- TS2 transmission.
+- Receiver recognition.
+- Lane-specific behaviour.
+- The transmitter's TS2 count.
+- Link partner training behaviour.
+- Physical connectivity or platform configuration.
+
+## Polling.Configuration — Complete Transition Summary
+
+| Current State | Condition | Next State |
+|---|---|---|
+| Polling.Active | Normal transmitter and receiver requirements satisfied | Polling.Configuration |
+| Polling.Active | 24 ms timeout; Outcome A conditions satisfied | Polling.Configuration |
+| Polling.Configuration | Eight consecutive qualifying TS2 received on at least one receiver-detected Lane AND transmitter sends at least 16 TS2 after receiving one TS2 | Configuration.Linkwidth.Start |
+| Polling.Configuration | 48 ms timeout expires without satisfying both normal conditions | Detect |
+
+## Polling.Configuration — Essential Understanding
+
+The important engineering capability is to explain:
+
+- Why Polling.Configuration follows Polling.Active.
+- What the three entry actions accomplish.
+- Why polarity correction must be complete before leaving Polling.Configuration.
+- Why the Transmit Margin field is reset to `000b`.
+- What the Polling.Compliance sequence setting controls.
+- Which physical Lanes transmit TS2 Ordered Sets.
+- Why Link Number and Lane Number remain PAD in TS2.
+- What the Data Rate Identifier advertises.
+- Why the actual initial training rate remains 2.5 GT/s.
+- Why at least one receiver-detected Lane is sufficient for the eight-consecutive-TS2 receiver requirement.
+- Why the transmitter must send at least 16 TS2 Ordered Sets after receiving one TS2 Ordered Set.
+- Why both normal transition conditions must be satisfied.
+- Why the 48 ms timeout returns the Port to Detect instead of using a three-way fallback mechanism.
+- How to investigate an NVMe SSD that repeatedly fails to progress beyond Polling.Configuration.
+
+---

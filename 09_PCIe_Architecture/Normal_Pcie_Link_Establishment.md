@@ -1706,3 +1706,1135 @@ Therefore, Polling.Speed is not part of the normal PCIe 5.0 initial Link-up sequ
 - Its historical operation involved Electrical Idle, data-rate selection and TS1 transmission at the selected rate.
 - PCIe 5.0 does not use Polling.Speed for normal initial Link establishment.
 - Higher-speed transitions in PCIe 5.0 are performed through Recovery after reaching L0.
+
+---
+---
+
+# Configuration State
+
+## Purpose
+
+The Configuration state is responsible for forming the physical Lanes of a PCIe Port into one or more logical PCIe Links.
+
+During Configuration, the two link partners perform:
+
+- Link-width negotiation.
+- Link and Lane identification.
+- Lane Number assignment.
+- Link formation.
+- Lane-to-Lane de-skew.
+- Configuration of additional Link parameters.
+- Preparation for normal Link operation.
+
+The Lanes of a Port are associated into a logical Link through the Configuration process.
+
+Successful entry into Configuration does not mean that the Link is already operational.
+
+The Link must complete the required Configuration procedures before reaching L0.
+
+## Configuration Substates
+
+The Configuration state contains the following substates:
+
+- Configuration.Linkwidth.Start
+- Configuration.Linkwidth.Accept
+- Configuration.Lanenum.Accept
+- Configuration.Lanenum.Wait
+- Configuration.Complete
+- Configuration.Idle
+
+`Configuration.Linkwidth.Start` is the first substate of the main Configuration state.
+
+---
+
+# Configuration.Linkwidth.Start
+
+## Purpose
+
+`Configuration.Linkwidth.Start` begins the Link-width negotiation process between the two PCIe link partners.
+
+Its purpose is to establish the candidate logical Link grouping using the physical Lanes that successfully detected Receivers during Detect.
+
+During this substate, the Downstream and Upstream Ports exchange TS1 Ordered Sets to identify the Link grouping that can be formed.
+
+The substate establishes the initial Link Number selection and determines which individual physical Lanes have satisfied the required TS1 reception conditions.
+
+The major responsibilities include:
+
+- Identifying the active physical Lanes.
+- Initiating Link identification from the Downstream Port.
+- Receiving and evaluating Link identification information at the Upstream Port.
+- Selecting a Link Number at the Upstream Port.
+- Responding with the selected Link Number on individually qualified Lanes.
+- Allowing the Downstream Port to recognize and qualify the Upstream response.
+- Determining whether the Ports can proceed to Configuration.Linkwidth.Accept.
+- Handling alternative transitions such as Disabled and Loopback.
+- Handling timeout and optional crosslink behavior.
+
+## Scope of Current Learning
+
+There are two different situations in which a Port can enter Configuration.Linkwidth.Start:
+
+- Initial Link establishment.
+- Reconfiguration or Link-width upconfiguration of an existing Link.
+
+The current learning scope is restricted to:
+
+**Initial Link establishment — LinkUp = 0b**
+
+In this situation:
+
+- The PCIe Link has not yet been established.
+- The LTSSM has entered Configuration through the normal Detect → Polling → Configuration sequence.
+- Link-width negotiation is being performed for the first time.
+- The physical Lanes detected during Detect are the candidates for the initial Link configuration.
+
+The LinkUp value is a Link status indication. It is not a software instruction used to initiate initial Link training.
+
+The separate LinkUp = 1b behavior for an already-configured Link will be studied later.
+
+## Working Topology
+
+The learning example uses one PCIe Link between a Root Port and a PCIe Switch.
+
+```text
+           Root Complex
+                |
+                |
+           Root Port
+         Downstream Port
+                |
+          PCIe Link
+                |
+         Four Physical Lanes
+                |
+       ---------------------
+       Lane 0
+       Lane 1
+       Lane 2
+       Lane 3
+       ---------------------
+                |
+        Switch Upstream Port
+                |
+           PCIe Switch
+```
+
+Assumptions for the current example:
+
+- The Root Port is the Downstream Port.
+- The Switch Upstream Port is the Upstream Port.
+- Four physical Lanes are available.
+- Receiver Detection succeeded on all four Lanes at both ends.
+- The intended Link is one x4 Link.
+- The Link is undergoing initial establishment.
+- LinkUp = 0b.
+- Optional crosslink behavior is not supported in this normal example.
+- No higher-layer instruction to enter Disabled or Loopback is present.
+
+The two Ports have independent LTSSMs.
+
+The Configuration process of this Root Port-to-Switch Upstream Port Link does not configure the Switch's other PCIe Links.
+
+For example, a Switch Downstream Port connected to an NVMe SSD has a separate PCIe Link and its own independent LTSSM.
+
+## **Understanding Link Number and Lane Number**
+
+The TS1 and TS2 Ordered Sets contain fields used to establish the logical identity of physical Lanes.
+
+Two important fields are:
+
+### **Link Number**
+
+The Link Number identifies the logical PCIe Link to which a group of physical Lanes belongs.
+
+For example:
+
+- A group of four physical Lanes may form one x4 Link.
+- Another group of four physical Lanes may form a separate x4 Link.
+
+Different Link Numbers can be used to identify different groups of Lanes that are capable of forming unique Links.
+
+### **Lane Number**
+
+The Lane Number identifies the logical position of a physical Lane within the configured PCIe Link.
+
+For example, a successfully configured x4 Link eventually has four logical Lane Numbers:
+
+- Lane Number 0
+- Lane Number 1
+- Lane Number 2
+- Lane Number 3
+
+The logical Lane Numbers have not yet been assigned during Configuration.Linkwidth.Start.
+
+The Lane Number field remains PAD during the initial Linkwidth.Start TS1 exchanges.
+
+The detailed assignment process is performed in subsequent Configuration substates.
+
+### **Meaning of PAD**
+
+PAD is a placeholder used during Link initialization.
+
+It indicates that the corresponding Link or Lane identification field has not yet been assigned in the training sequence.
+
+During Configuration.Linkwidth.Start:
+
+- The Downstream Port begins advertising a non-PAD Link Number.
+- The Upstream Port initially transmits PAD for both Link Number and Lane Number.
+- The Lane Number field remains PAD during the normal Linkwidth.Start negotiation.
+
+## **Entry into Configuration.Linkwidth.Start**
+
+The normal initial entry path is:
+
+```
+Detect
+   |
+   v
+Polling
+   |
+   v
+Polling.Configuration
+   |
+   | Required TS2 receiver and transmitter conditions satisfied
+   |
+   v
+Configuration.Linkwidth.Start
+```
+
+When the LTSSM enters this substate from Polling:
+
+**Any Lane that detected a Receiver during Detect is considered an active Lane.**
+
+This rule applies independently at the Downstream and Upstream Ports.
+
+### **Meaning of an Active Lane**
+
+An active Lane is a physical Lane that is considered for the initial Link configuration because it successfully detected a Receiver during Detect.
+
+Receiver Detection establishes the presence of the expected far-end receiver termination.
+
+However, an active Lane is not necessarily a successfully configured logical Lane.
+
+At this point:
+
+- Receiver Detection has identified the physical Lanes with receiver terminations.
+- Polling has established the required initial training conditions.
+- Configuration.Linkwidth.Start begins the logical Link identification process.
+- The final configured Link width has not yet been established.
+- The final logical Lane Numbers have not yet been assigned.
+
+### **Example — Four Receiver-Detected Lanes**
+
+Suppose the Root Port detects Receivers on all four physical Lanes.
+
+| Physical Lane | Receiver Detection | Status on Entry |
+| ------------- | ------------------ | --------------- |
+| Lane 0        | Successful         | Active          |
+| Lane 1        | Successful         | Active          |
+| Lane 2        | Successful         | Active          |
+| Lane 3        | Successful         | Active          |
+
+All four Lanes are considered active candidates for the intended x4 Link.
+
+**Important distinction:**
+
+- Physical Lane availability.
+- Successful Receiver Detection.
+- Active Lane status.
+- Logical Link configuration.
+
+These are related but different concepts.
+
+A physical x4 connection does not automatically guarantee that all four Lanes will become part of the final configured x4 Link.
+
+### **Recovery Entry — Deferred**
+
+When the LTSSM enters Configuration.Linkwidth.Start from Recovery, the active-Lane rule is different.
+
+The Lanes that were part of the previously configured Link during the previous Configuration.Complete are considered active.
+
+This belongs to the existing-Link reconfiguration path and is outside the current initial LinkUp = 0b learning scope.
+
+# **Initial TS1 Transmission by the Downstream and Upstream Ports**
+
+Both Ports enter Configuration.Linkwidth.Start, but their initial TS1 transmission fields are different.
+
+The Downstream Port initiates Link identification.
+
+The Upstream Port initially transmits PAD for both Link Number and Lane Number.
+
+Both Ports independently transmit and receive TS1 Ordered Sets while their respective LTSSMs evaluate the incoming training information.
+
+## **Downstream Port — Root Port**
+
+The Root Port is the Downstream Port in the current example.
+
+When it enters Configuration.Linkwidth.Start with LinkUp = 0b, it transmits TS1 Ordered Sets on all active Downstream Lanes with:
+
+| TS1 Field   | Value                        |
+| ----------- | ---------------------------- |
+| Link Number | Selected non-PAD Link Number |
+| Lane Number | PAD                          |
+
+Assume the selected Link Number is `N`.
+
+Because the example contains one intended x4 Link, all four active Downstream Lanes transmit the same Link Number.
+
+### **Example — Downstream TS1 Transmission**
+
+| Physical Lane | Link Number | Lane Number |
+| ------------- | ----------- | ----------- |
+| Lane 0        | N           | PAD         |
+| Lane 1        | N           | PAD         |
+| Lane 2        | N           | PAD         |
+| Lane 3        | N           | PAD         |
+
+The Root Port is proposing the Link identity that should be used by the physical Lanes forming this logical Link.
+
+The Lane Number remains PAD because logical Lane Number assignment has not yet occurred.
+
+### **Multiple Link Support**
+
+A Downstream Port may support multiple possible Link groupings.
+
+For example, consider eight Downstream Lanes that can form:
+
+- One x8 Link when connected to one component.
+- Two independent x4 Links when connected to two different components.
+
+An example Link Number assignment is:
+
+| Physical Lane Group | Link Number | Lane Number |
+| ------------------- | ----------- | ----------- |
+| First four Lanes    | N           | PAD         |
+| Next four Lanes     | N+1         | PAD         |
+
+Different Link Numbers are used only for groups of Lanes capable of forming unique Links.
+
+This allows the Downstream Port to advertise its possible logical Link groupings.
+
+For the current x4 example, all four Lanes use the same Link Number `N`.
+
+### **Data Rate Identifier**
+
+The TS1 Ordered Sets contain a Data Rate Identifier.
+
+The Data Rate Identifier must advertise all data rates supported by the Port, including rates that the Port does not intend to use.
+
+For example, a PCIe Gen5 Port may advertise support for:
+
+- 2.5 GT/s
+- 5.0 GT/s
+- 8.0 GT/s
+- 16.0 GT/s
+- 32.0 GT/s
+
+However, advertising support for 32.0 GT/s does not mean that the Link is currently operating at 32.0 GT/s.
+
+During initial PCIe 5.0 Link establishment, the actual training rate remains 2.5 GT/s.
+
+## **Upstream Port — Switch**
+
+The Switch Upstream Port is the Upstream Port in our example.
+
+When it enters Configuration.Linkwidth.Start from Polling, its transmitter initially sends TS1 Ordered Sets on all active Upstream Lanes with:
+
+| TS1 Field   | Initial Value |
+| ----------- | ------------- |
+| Link Number | PAD           |
+| Lane Number | PAD           |
+
+### **Example — Upstream Initial TS1 Transmission**
+
+| Physical Lane | Link Number | Lane Number |
+| ------------- | ----------- | ----------- |
+| Lane 0        | PAD         | PAD         |
+| Lane 1        | PAD         | PAD         |
+| Lane 2        | PAD         | PAD         |
+| Lane 3        | PAD         | PAD         |
+
+At this point, the Upstream Port has not yet selected the Link Number for the logical Link.
+
+Its receiving circuitry simultaneously examines the TS1 Ordered Sets arriving from the Downstream Port.
+
+The Upstream Port will select the Link Number based on the qualifying TS1 information it receives.
+
+# **Upstream Port — TS1 Reception and Lane Qualification**
+
+## **Purpose**
+
+The Upstream Port must determine which of its receiving Lanes have received valid Link identification information from the Downstream Port.
+
+It examines the incoming TS1 Ordered Sets independently on each receiving Lane.
+
+The receiver does not combine TS1 observations from different Lanes to satisfy the two-consecutive-TS1 requirement.
+
+## **Required TS1 Conditions**
+
+The Upstream Port must receive two consecutive TS1 Ordered Sets on a receiving Lane with:
+
+| TS1 Field   | Required Value |
+| ----------- | -------------- |
+| Link Number | Non-PAD        |
+| Lane Number | PAD            |
+
+The two qualifying TS1 Ordered Sets must be received consecutively on the same Lane.
+
+At least one Lane must satisfy this condition for the normal Upstream Port transition.
+
+### **Example — Per-Lane TS1 Reception**
+
+Assume the Root Port is transmitting Link Number `N` and Lane Number PAD.
+
+The Switch Upstream Port receives the following TS1 Ordered Sets:
+
+| Upstream RX Lane | TS1 #1    | TS1 #2    | Qualification |
+| ---------------- | --------- | --------- | ------------- |
+| Lane 0           | N / PAD   | N / PAD   | Qualified     |
+| Lane 1           | N / PAD   | PAD / PAD | Not qualified |
+| Lane 2           | N / PAD   | N / PAD   | Qualified     |
+| Lane 3           | PAD / PAD | PAD / PAD | Not qualified |
+
+In this example:
+
+- Lane 0 received two consecutive qualifying TS1 Ordered Sets.
+- Lane 2 independently received two consecutive qualifying TS1 Ordered Sets.
+- Lane 1 did not receive two consecutive qualifying TS1 Ordered Sets.
+- Lane 3 received only PAD/PAD TS1 Ordered Sets.
+
+The Upstream Port's receiver evaluates each Lane independently.
+
+### **Important — One Lane Is Sufficient**
+
+The Upstream Port does not require every active receiving Lane to satisfy the two-consecutive-TS1 condition.
+
+If any one receiving Lane satisfies the condition, the normal Link Number selection procedure can proceed.
+
+For example:
+
+- Lane 0 qualifies.
+- Lane 1 does not qualify.
+- Lane 2 does not qualify.
+- Lane 3 does not qualify.
+
+The normal transition condition is still satisfied because Lane 0 received two consecutive qualifying TS1 Ordered Sets.
+
+### **Why Two Consecutive TS1 Ordered Sets?**
+
+A single TS1 Ordered Set is one observation of the Link identification information.
+
+The receiver must recognize the required information in two consecutive TS1 Ordered Sets before the specified transition condition is satisfied.
+
+The two-consecutive-sequence requirement is part of the PCIe LTSSM transition rules.
+
+A qualifying TS1 received on Lane 0 cannot be combined with another qualifying TS1 received on Lane 2 to create a valid two-sequence pair.
+
+Each receiving Lane must satisfy the condition independently.
+
+# **Upstream Port — Link Number Selection and Transmitter Response**
+
+## **Link Number Selection**
+
+After any receiving Lane receives two consecutive qualifying TS1 Ordered Sets with:
+
+- Link Number different from PAD.
+- Lane Number equal to PAD.
+
+The Upstream Port selects a single Link Number.
+
+For the current example, assume the Root Port transmitted Link Number `N`.
+
+The Upstream Port therefore selects:
+
+`Selected Link Number = N`
+
+This is a Port-level Link Number selection.
+
+The Upstream Port does not select a different Link Number for Lane 0 and Lane 2.
+
+It selects one Link Number for the Link being configured.
+
+## **Upstream Transmitter Response**
+
+After selecting the Link Number, the Upstream Port transmits TS1 Ordered Sets with:
+
+| TS1 Field   | Transmitted Value            |
+| ----------- | ---------------------------- |
+| Link Number | Selected non-PAD Link Number |
+| Lane Number | PAD                          |
+
+However, it does not transmit the selected Link Number on every active Lane automatically.
+
+The transmission rule is evaluated independently for each Lane.
+
+The Upstream transmitter sends the selected Link Number with Lane Number PAD on every Lane satisfying both conditions:
+
+1. The Lane detected a Receiver during Detect.
+2. The same Lane received two consecutive qualifying TS1 Ordered Sets with a non-PAD Link Number and Lane Number PAD.
+
+Any remaining Lanes that detected a Receiver during Detect continue transmitting TS1 Ordered Sets with both Link Number and Lane Number set to PAD.
+
+### **Example — Upstream Transmitter Response**
+
+Assume:
+
+- All four Upstream Lanes detected Receivers during Detect.
+- RX Lane 0 received two consecutive qualifying TS1 Ordered Sets.
+- RX Lane 2 received two consecutive qualifying TS1 Ordered Sets.
+- RX Lane 1 and RX Lane 3 did not qualify.
+- The selected Link Number is `N`.
+
+The Upstream transmitter responds as follows.
+
+| Upstream Lane | Receiver Qualification | TX Link Number | TX Lane Number |
+| ------------- | ---------------------- | -------------- | -------------- |
+| Lane 0        | Qualified              | N              | PAD            |
+| Lane 1        | Not qualified          | PAD            | PAD            |
+| Lane 2        | Qualified              | N              | PAD            |
+| Lane 3        | Not qualified          | PAD            | PAD            |
+
+Only Lane 0 and Lane 2 transmit the selected Link Number in this example.
+
+Lane 1 and Lane 3 continue transmitting PAD/PAD.
+
+### **Important — Port-Level Transition Versus Per-Lane Qualification**
+
+The Upstream Port has one LTSSM for this Link.
+
+Individual Lanes are evaluated separately for their TS1 reception conditions, but they do not each have an independent Configuration.Linkwidth.Start state machine.
+
+Once the Upstream Port satisfies the normal transition condition and performs the required Link Number response:
+
+`Configuration.Linkwidth.Start → Configuration.Linkwidth.Accept`
+
+The entire Upstream Port's LTSSM transitions to the next substate.
+
+It does not wait for every remaining active Lane to qualify.
+
+Therefore:
+
+- Lane 0 and Lane 2 can qualify.
+- Lane 1 and Lane 3 can still be transmitting PAD/PAD.
+- The Upstream Port's LTSSM can nevertheless transition to Configuration.Linkwidth.Accept.
+
+The remaining Lanes do not stay behind in Configuration.Linkwidth.Start with separate 24 ms timers.
+
+They are subsequently handled by the Port's Linkwidth.Accept behavior.
+
+### **Important Distinction**
+
+A Lane can be:
+
+- Active because it detected a Receiver during Detect.
+- Not yet qualified for the selected-Link-Number response.
+- Not necessarily part of the final configured Link.
+
+Active Lane status and final configured Link membership are different concepts.
+
+The final Link width is not determined merely by the number of physical Lanes that detected Receivers during Detect.
+
+# **Downstream Port — TS1 Reception and Qualification**
+
+## **Purpose**
+
+After the Upstream Port responds with its selected Link Number, the Downstream Port must receive and recognize that response.
+
+The Root Port is the Downstream Port in the current example.
+
+Its receiver examines the TS1 Ordered Sets transmitted by the Switch Upstream Port.
+
+## **Required TS1 Conditions**
+
+The Downstream Port must receive two consecutive TS1 Ordered Sets on the same applicable receiving Lane with:
+
+| TS1 Field   | Required Value |
+| ----------- | -------------- |
+| Link Number | Non-PAD        |
+| Lane Number | PAD            |
+
+There is one additional requirement concerning the initial PAD/PAD observation.
+
+### **Initial PAD/PAD Observation Condition**
+
+If any Downstream Lanes first received one or more TS1 Ordered Sets with both:
+
+- Link Number = PAD.
+- Lane Number = PAD.
+
+Then the Downstream Port transitions to Configuration.Linkwidth.Accept immediately after any of those same Downstream Lanes receives two consecutive TS1 Ordered Sets with:
+
+- A non-PAD Link Number.
+- A Link Number matching one of the Link Numbers transmitted by the Downstream Port.
+- Lane Number = PAD.
+
+The required two consecutive TS1 Ordered Sets must be received on the same applicable Lane.
+
+### **Crosslink Configuration Not Supported**
+
+The specification provides an important simplification.
+
+If crosslink configuration is not supported, the condition of first receiving a TS1 Ordered Set with both Link Number and Lane Number set to PAD is always considered true.
+
+Therefore, in the current normal example, we do not need to separately establish that initial PAD/PAD reception condition.
+
+The normal Downstream receiving requirement is satisfied when any applicable receiving Lane receives two consecutive TS1 Ordered Sets with:
+
+- A non-PAD Link Number matching one of the Downstream Port's transmitted Link Numbers.
+- Lane Number = PAD.
+
+## **Example — Downstream Reception**
+
+Assume the Switch Upstream Port has selected Link Number `N`.
+
+It transmits:
+
+| Upstream TX Lane | Link Number | Lane Number |
+| ---------------- | ----------- | ----------- |
+| Lane 0           | N           | PAD         |
+| Lane 1           | PAD         | PAD         |
+| Lane 2           | N           | PAD         |
+| Lane 3           | PAD         | PAD         |
+
+Assume straightforward physical Lane correspondence for this illustration.
+
+The Root Port receives:
+
+| Downstream RX Lane | TS1 #1    | TS1 #2    | Qualification |
+| ------------------ | --------- | --------- | ------------- |
+| Lane 0             | N / PAD   | N / PAD   | Qualified     |
+| Lane 1             | PAD / PAD | PAD / PAD | Not qualified |
+| Lane 2             | N / PAD   | N / PAD   | Qualified     |
+| Lane 3             | PAD / PAD | PAD / PAD | Not qualified |
+
+Lane 0 and Lane 2 independently satisfy the normal TS1 reception condition.
+
+The Downstream Port does not require all four receiving Lanes to qualify.
+
+One qualifying receiving Lane is sufficient for the normal transition when crosslink configuration is not supported.
+
+### **Link Number Matching Requirement**
+
+The Downstream Port must verify that the received non-PAD Link Number matches one of the Link Numbers it transmitted.
+
+For example:
+
+- Downstream transmitted Link Number `N`.
+- Downstream receives Link Number `N` with Lane Number PAD.
+- The received Link Number matches the transmitted Link Number.
+
+The received TS1 information therefore satisfies the Link Number matching requirement.
+
+A different non-PAD Link Number that does not match one of the transmitted Link Numbers does not satisfy this condition.
+
+## **Downstream Normal Transition**
+
+When the applicable receiving Lane satisfies the two-consecutive-TS1 condition:
+
+`Configuration.Linkwidth.Start → Configuration.Linkwidth.Accept`
+
+The transition can occur without waiting for all active Lanes to qualify.
+
+# **Independent LTSSM Operation at Both Ports**
+
+The Downstream and Upstream Ports have independent LTSSMs.
+
+Each Port independently evaluates:
+
+- Its own transmitted TS1 Ordered Sets.
+- Its own received TS1 Ordered Sets.
+- Its own Lane qualification conditions.
+- Its own normal transition condition.
+- Its own timeout.
+
+Consider the two connected Ports.
+
+```
+       Root Port                         PCIe Switch
+     Downstream Port                   Upstream Port
+
+         RP_TX  ---------------------->  SW_RX
+
+         RP_RX  <----------------------  SW_TX
+```
+
+The Root Port's receiving and transmitting operations are independent of the Switch's receiving and transmitting operations.
+
+### **Upstream Port Transition**
+
+The Upstream Port evaluates the TS1 Ordered Sets received from the Root Port.
+
+When its normal condition is satisfied, it selects a Link Number, performs its qualifying-Lane response and transitions to Configuration.Linkwidth.Accept.
+
+### **Downstream Port Transition**
+
+The Downstream Port evaluates the TS1 Ordered Sets received from the Switch.
+
+When its normal condition is satisfied, it recognizes the matching Link Number and transitions to Configuration.Linkwidth.Accept.
+
+### **Transitions Need Not Be Simultaneous**
+
+One Port may satisfy its transition condition before the other Port.
+
+For example:
+
+- The Upstream Port may receive its qualifying TS1 pair first.
+- The Upstream Port may select the Link Number and enter Configuration.Linkwidth.Accept.
+- The Downstream Port may still be evaluating its received TS1 information.
+- The Downstream Port transitions independently when its own condition is fulfilled.
+
+There is no requirement that both Ports transition at exactly the same instant.
+
+# **Configuration.Linkwidth.Start — 24 ms Timeout**
+
+## **Purpose**
+
+The 24 ms timeout provides a limit for the Port to make the required progress through Configuration.Linkwidth.Start.
+
+The normal transition should occur when the required TS1 conditions are satisfied.
+
+If the required normal transition condition is not satisfied within the 24 ms timeout, the Port has a timeout exit to Detect.
+
+The 24 ms timeout applies independently to the Downstream and Upstream Ports.
+
+## **Downstream Port — Timeout**
+
+The Root Port is the Downstream Port.
+
+Its normal transition requires the appropriate receiving Lane to receive two consecutive TS1 Ordered Sets containing:
+
+- A non-PAD Link Number matching one of the transmitted Link Numbers.
+- Lane Number = PAD.
+
+The initial PAD/PAD observation requirement is considered satisfied automatically when crosslink configuration is not supported.
+
+If the required normal transition condition is not fulfilled within 24 ms:
+
+`Configuration.Linkwidth.Start → Detect`
+
+### **Example — Downstream Timeout**
+
+Assume the Root Port transmits:
+
+`TS1: Link Number = N, Lane Number = PAD`
+
+However, it continuously receives TS1 Ordered Sets from the Upstream Port with:
+
+`TS1: Link Number = PAD, Lane Number = PAD`
+
+The Root Port never receives two consecutive qualifying TS1 Ordered Sets with the required matching non-PAD Link Number.
+
+When the 24 ms timeout expires:
+
+`Configuration.Linkwidth.Start → Detect`
+
+The Port returns to the Detect state machine.
+
+The timeout does not mean that the Link has been successfully configured at a narrower width.
+
+## **Upstream Port — Timeout**
+
+The Switch Upstream Port initially transmits:
+
+`TS1: Link Number = PAD, Lane Number = PAD`
+
+Its normal transition requires at least one receiving Lane to receive two consecutive TS1 Ordered Sets with:
+
+- Link Number different from PAD.
+- Lane Number = PAD.
+
+If no receiving Lane satisfies this condition within 24 ms:
+
+`Configuration.Linkwidth.Start → Detect`
+
+### **Example — Upstream Timeout**
+
+Assume the Upstream Port continuously receives:
+
+`TS1: Link Number = PAD, Lane Number = PAD`
+
+It never receives two consecutive qualifying TS1 Ordered Sets with a non-PAD Link Number and Lane Number PAD.
+
+The Upstream Port cannot perform the normal Link Number selection procedure.
+
+When the 24 ms timeout expires:
+
+`Configuration.Linkwidth.Start → Detect`
+
+## **Independent Timeout Behavior**
+
+Both Ports have independent 24 ms timeout behavior.
+
+| Port       | Normal Transition Condition                                                                                                    | Timeout Destination |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------- |
+| Downstream | Receives two consecutive TS1 with a matching non-PAD Link Number and Lane Number PAD, subject to the initial PAD/PAD condition | Detect              |
+| Upstream   | Receives two consecutive TS1 with a non-PAD Link Number and Lane Number PAD on any one receiving Lane                          | Detect              |
+
+The timeout of one Port does not require the other Port to transition at precisely the same instant.
+
+### **Important — 24 ms Is Not a Per-Lane Timeout**
+
+The 24 ms timeout is associated with the Port's progress through Configuration.Linkwidth.Start.
+
+It is not a separate 24 ms allowance for each physical Lane.
+
+For example:
+
+- Upstream Lane 0 qualifies.
+- Upstream Lane 2 qualifies.
+- Upstream Lane 1 does not qualify.
+- Upstream Lane 3 does not qualify.
+
+The Upstream Port can satisfy its normal transition condition and move to Configuration.Linkwidth.Accept.
+
+It does not wait for Lane 1 and Lane 3 to qualify within separate 24 ms periods.
+
+The remaining Lanes do not have separate LTSSMs that remain in Configuration.Linkwidth.Start.
+
+### **Timeout Does Not Identify the Root Cause**
+
+A timeout indicates that the required transition condition was not satisfied within the specified period.
+
+It does not independently identify whether the issue is caused by:
+
+- Physical Lane connectivity.
+- Receiver behavior.
+- Incorrect TS1 transmission.
+- Incorrect Link Number information.
+- Lane-specific reception errors.
+- Link partner behavior.
+- Platform or hardware configuration.
+
+The root cause must be established through further investigation.
+
+# **Configuration.Linkwidth.Start — Alternative Transition to Disabled**
+
+## **Purpose**
+
+The Disabled alternative transition provides a mechanism to deliberately prevent a PCIe Link from becoming operational.
+
+A Port may successfully complete:
+
+- Receiver Detection.
+- Initial TS1 training.
+- Polling.Configuration.
+
+However, successful completion of these stages does not require the Link to become operational if the higher layer instructs the Port to disable the Link.
+
+The Disabled transition is an intentional control operation.
+
+It must not be confused with a Link-training failure or a 24 ms timeout.
+
+## **Why Can Disabled Be Entered During Configuration.Linkwidth.Start?**
+
+Configuration.Linkwidth.Start is the stage where the Ports begin forming the logical PCIe Link.
+
+The higher layer can direct the Physical Layer not to proceed with normal Link establishment.
+
+For example, platform software or firmware may intentionally disable a Root Port.
+
+The physical connection may exist and Receiver Detection may have succeeded, but the platform does not want that PCIe Link to become operational.
+
+The LTSSM must follow the higher-layer instruction.
+
+Therefore, Disabled is an alternative exit from Configuration.Linkwidth.Start.
+
+## **Downstream Port — Higher-Layer-Directed Disabled Transition**
+
+The Root Port is the Downstream Port in our example.
+
+When instructed by a higher layer to disable the Link, the Downstream Port must assert the Disable Link bit in:
+
+- TS1 Ordered Sets.
+- TS2 Ordered Sets.
+
+It must assert this bit on all Lanes that detected a Receiver during Detect.
+
+The next state is:
+
+`Configuration.Linkwidth.Start → Disabled`
+
+### **Example — Four Receiver-Detected Lanes**
+
+| Physical Lane | Receiver Detected During Detect | Disable Link in TS1 | Disable Link in TS2 |
+| ------------- | ------------------------------- | ------------------- | ------------------- |
+| Lane 0        | Yes                             | Asserted            | Asserted            |
+| Lane 1        | Yes                             | Asserted            | Asserted            |
+| Lane 2        | Yes                             | Asserted            | Asserted            |
+| Lane 3        | Yes                             | Asserted            | Asserted            |
+
+All four receiver-detected Downstream Lanes carry the Disable Link indication.
+
+### **Understanding the Higher-Layer Instruction**
+
+The higher-layer instruction is a local control decision.
+
+It is not itself a TS1 Ordered Set received from the other Port.
+
+For example, software can request that a Root Port disable its Link through the Link Disable field in the Link Control Register.
+
+The Port's hardware then performs the required LTSSM operation.
+
+The distinction is:
+
+- Higher-layer instruction: Local control request to disable the Link.
+- Disable Link bit in TS1 and TS2: Control indication transmitted over the PCIe Link.
+
+### **Important**
+
+The Downstream Port does not enter Disabled because:
+
+- A Lane failed Receiver Detection.
+- The Link Number was not received.
+- The normal Link-width negotiation failed.
+- The 24 ms timeout expired.
+
+It enters Disabled because the higher layer deliberately instructed it to disable the Link.
+
+## **Upstream Port — Receiving Disable Link**
+
+The Switch Upstream Port must recognize the Disable Link indication transmitted by the Downstream Port.
+
+The Upstream Port receives the Root Port's TS1 Ordered Sets.
+
+During normal non-crosslink operation, its transition condition is:
+
+**Any Lane that is transmitting TS1 Ordered Sets receives two consecutive TS1 Ordered Sets with the Disable Link bit asserted.**
+
+The Upstream Port then transitions to:
+
+`Configuration.Linkwidth.Start → Disabled`
+
+### **Example — One Lane Receives Disable Link**
+
+Assume the Upstream Port is transmitting TS1 Ordered Sets on all four active Lanes.
+
+Its Lane 0 receiver receives:
+
+| Received Ordered Set | Disable Link Bit |
+| -------------------- | ---------------- |
+| TS1 #1               | Asserted         |
+| TS1 #2               | Asserted         |
+
+Lane 0 has received two consecutive TS1 Ordered Sets with Disable Link asserted.
+
+This is sufficient for the normal non-crosslink Upstream Port transition.
+
+The Upstream Port's LTSSM transitions to Disabled.
+
+It does not require all four active Lanes to receive the Disable Link indication in the normal non-crosslink case.
+
+### **Important — Two Consecutive TS1 Ordered Sets**
+
+The Upstream Port's normal received Disable Link condition requires two consecutive TS1 Ordered Sets.
+
+The receiver must not count a TS2 Ordered Set as one of the two required TS1 Ordered Sets.
+
+### **Crosslink Exception — Deferred**
+
+When optional crosslink support is used, the Upstream Port has a stricter Disable Link reception condition.
+
+All Lanes that are both transmitting and receiving TS1 Ordered Sets must receive the Disable Link bit asserted in two consecutive TS1 Ordered Sets.
+
+This optional crosslink-specific behavior will be studied separately.
+
+# **Configuration.Linkwidth.Start — Normal and Completed Alternative Paths**
+
+## **Normal Link Establishment**
+
+The normal Link-establishment procedure is:
+
+```
+        Configuration.Linkwidth.Start
+                    |
+                    |
+        Downstream sends TS1:
+             Link N / PAD
+                    |
+                    |
+          Upstream initially sends:
+               PAD / PAD
+                    |
+                    |
+          Upstream RX evaluates
+          TS1 independently per Lane
+                    |
+                    |
+          Any Lane receives two
+          consecutive qualifying TS1
+                    |
+                    |
+          Upstream selects Link N
+                    |
+                    |
+          Upstream TX sends:
+          N / PAD on qualified Lanes
+          PAD / PAD on remaining
+          receiver-detected Lanes
+                    |
+                    |
+          Upstream enters
+          Configuration.Linkwidth.Accept
+```
+
+The Downstream Port independently receives and evaluates the Upstream Port's response.
+
+When its own required condition is satisfied:
+
+`Configuration.Linkwidth.Start → Configuration.Linkwidth.Accept`
+
+## **Alternative Transition — Downstream Directed Disable**
+
+```
+Configuration.Linkwidth.Start
+             |
+             |
+Higher layer directs Link disable
+             |
+             |
+Downstream asserts Disable Link
+in TS1 and TS2 on all receiver-
+detected Lanes from Detect
+             |
+             v
+          Disabled
+```
+
+## **Alternative Transition — Upstream Received Disable**
+
+```
+Configuration.Linkwidth.Start
+             |
+             |
+Upstream receives two consecutive
+TS1 Ordered Sets with Disable Link
+asserted on a qualifying Lane
+             |
+             v
+          Disabled
+```
+
+## **Timeout Exit**
+
+For either Port:
+
+```
+Configuration.Linkwidth.Start
+             |
+             |
+Required normal transition condition
+not fulfilled within 24 ms
+             |
+             v
+            Detect
+```
+
+# **Configuration.Linkwidth.Start — Enterprise NVMe SSD Validation Relevance**
+
+An Enterprise NVMe SSD Validation Engineer must be able to identify and investigate Link-width negotiation failures at both the Root Port and the SSD Endpoint.
+
+The validation engineer must understand the independent transmission and reception behavior at both ends of the PCIe Link.
+
+## **TS1 Transmission Verification**
+
+Verify the initial TS1 transmission fields.
+
+### **Downstream Port**
+
+- Verify that the Downstream Port transmits a selected non-PAD Link Number.
+- Verify that Lane Number is PAD.
+- Verify that the appropriate active Downstream Lanes transmit TS1.
+- Verify the Data Rate Identifier advertises all supported data rates.
+
+### **Upstream Port**
+
+- Verify that the Upstream Port initially transmits Link Number PAD and Lane Number PAD.
+- Verify that the appropriate active Upstream Lanes transmit TS1.
+- Verify that its transmitter changes to the selected Link Number only on Lanes satisfying the specified receiver qualification conditions.
+
+## **Receiver Qualification**
+
+Examine TS1 reception independently for every physical Lane.
+
+Verify:
+
+- The Link Number field.
+- The Lane Number field.
+- Whether the Link Number is PAD or non-PAD.
+- Whether the Lane Number is PAD.
+- Whether two consecutive qualifying TS1 Ordered Sets are received on the same Lane.
+- Whether the received Link Number matches one transmitted by the Downstream Port.
+
+Do not combine qualifying TS1 observations from different Lanes.
+
+## **Partial Lane Qualification**
+
+Investigate scenarios where:
+
+- All physical Lanes detected Receivers during Detect.
+- Only a subset of Lanes receives two consecutive qualifying TS1 Ordered Sets.
+- The Upstream Port responds with a selected Link Number on the qualified Lanes.
+- Remaining receiver-detected Lanes continue transmitting PAD/PAD.
+- The Port transitions to Configuration.Linkwidth.Accept without waiting for all active Lanes to qualify.
+
+The final configured Link width must be evaluated in subsequent Configuration substates.
+
+## **Timeout Investigation**
+
+If a Port returns to Detect after the 24 ms timeout, collect evidence for:
+
+- Downstream TS1 transmission.
+- Upstream TS1 transmission.
+- Received TS1 fields on every Lane.
+- Missing or incorrect Link Number responses.
+- Lane-specific reception behavior.
+- The independent transition behavior of both Ports.
+
+The timeout alone does not identify the root cause.
+
+## **Disabled Transition Investigation**
+
+When a Link enters Disabled during initial Configuration, determine whether:
+
+- A higher layer intentionally directed the Downstream Port to disable the Link.
+- The Downstream Port asserted Disable Link in its TS1 and TS2 Ordered Sets.
+- The Upstream Port received two consecutive TS1 Ordered Sets with Disable Link asserted.
+- The Disabled transition was intentional or unexpected.
+
+A protocol trace can help distinguish a deliberate disable request from a Link-training timeout.
+
+# **Configuration.Linkwidth.Start — Essential Understanding**
+
+The important engineering capability is to explain:
+
+- Why Configuration.Linkwidth.Start exists.
+- Why initial Link establishment uses LinkUp = 0b.
+- Which physical Lanes become active when entering from Polling.
+- Why active Lane status does not guarantee final Link membership.
+- Why the Downstream Port initially sends a non-PAD Link Number and Lane Number PAD.
+- Why the Upstream Port initially sends PAD/PAD.
+- Why the Downstream and Upstream Ports have different responsibilities.
+- Why Link Number and Lane Number are separate concepts.
+- Why the Upstream Port evaluates TS1 reception independently on each Lane.
+- Why two consecutive qualifying TS1 Ordered Sets must be received on the same Lane.
+- Why one qualifying Lane is sufficient for the normal Upstream Port transition.
+- How the Upstream Port selects a single Link Number.
+- Why only individually qualified Upstream Lanes transmit the selected Link Number.
+- Why the remaining receiver-detected Lanes continue transmitting PAD/PAD.
+- Why the entire Port LTSSM transitions to Configuration.Linkwidth.Accept without waiting for every active Lane to qualify.
+- How the Downstream Port independently receives and qualifies the Upstream response.
+- Why the Downstream Port checks that the received Link Number matches one it transmitted.
+- Why the Downstream Port has an additional conditional initial PAD/PAD reception requirement.
+- Why that initial PAD/PAD condition is always considered true when crosslink configuration is not supported.
+- Why each Port has an independent 24 ms timeout.
+- Why the timeout is not a separate waiting period for every physical Lane.
+- Why a timeout leads to Detect rather than successful Link configuration.
+- Why the Disabled alternative transition exists.
+- How a higher-layer instruction directs the Downstream Port to disable the Link.
+- How the Disable Link indication is transmitted in TS1 and TS2.
+- How the Upstream Port recognizes the Disable Link indication through two consecutive TS1 Ordered Sets.
+- Why Disabled is an intentional control transition rather than automatically a training failure.
+
+
+

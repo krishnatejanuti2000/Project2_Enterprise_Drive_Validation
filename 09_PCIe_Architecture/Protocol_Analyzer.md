@@ -1140,3 +1140,358 @@ This allows us to capture the available initial training activity without waitin
 For a targeted investigation, Event Trigger can instead be configured using an event such as TS1 or TS2.
 
 ---
+
+# Analyzer and Probe Settings — Preset Library
+
+The Analyzer and Probe Settings area includes a Preset Library. It provides predefined analyzer/interposer configurations that can be selected for a supported Host, DUT and interposer combination.
+
+A preset should match the actual equipment in the lab. It is not a generic setting that can safely be applied to any server, SSD or interposer.
+
+## Host, DUT and Interposer selection
+
+| Field | Meaning | Selection guidance |
+|---|---|---|
+| Host | Host platform containing the PCIe Root Complex/Root Port | Select the actual server/platform preset when an exact supported match is available |
+| DUT | Device Under Test, such as the NVMe SSD or another PCIe endpoint | Select the actual device preset when an exact supported match is available |
+| Interposer | The physical interposer used in the PCIe capture path | Select the exact interposer model and supported configuration |
+
+The available Host and DUT choices are filtered according to the selected interposer and supported combinations.
+
+When a connected interposer is detected, its matching entry is shown in bold and underlined in the Interposer list. This is an identification aid; the physical interposer model and board identity must still be checked before applying a configuration.
+
+## Preset list columns
+
+The preset list contains the following information:
+
+| Column | Meaning |
+|---|---|
+| Host | Host platform associated with the preset |
+| DUT | Device associated with the preset |
+| Rank | Preset ranking related to observed error performance |
+| Comment | Descriptive information about the preset |
+
+The manual explains that Rank 1 represents few or zero errors, while higher ranks indicate increasing errors. A rank greater than 6 is not recommended. The manual does not define a precise meaning for every intermediate rank, so do not infer additional thresholds.
+
+The Comment field is descriptive information. It is not itself a configuration control.
+
+## Applying a preset
+
+The Preset Library provides three application choices:
+
+| Control | Effect |
+|---|---|
+| Apply Preset | Applies the selected preset to both Upstream and Downstream configurations |
+| Apply US only | Applies the selected preset to the Upstream configuration only |
+| Apply DS only | Applies the selected preset to the Downstream configuration only |
+
+Applying a preset can prompt for a host reboot. The exact prompt and required action depend on the selected configuration.
+
+A board-ID mismatch warning must be taken seriously. Do not apply a preset to an interposer whose identity does not match the preset's intended hardware.
+
+## Export Library and Import Library
+
+**Export Library** exports the preset library to a `.pelib` file.
+
+**Import Library** imports a `.pelib` file into the local preset library. Importing replaces the local preset folder. Back up locally created presets before importing another library so that they are not unintentionally lost.
+
+## Save Current
+
+Save Current saves the manually selected configuration as a user-defined preset. The documented workflow asks for identifying information such as:
+
+- Platform Name.
+- Root Complex.
+- DUT.
+- Interposer.
+- Notes.
+
+The Save Current operation saves the selected values and writes the configuration to the interposer across the three configuration areas:
+
+- Host-to-DUT path.
+- Interposer-to-Analyzer path.
+- Analyzer Calibration.
+
+This is more than assigning a descriptive preset name. Because it also writes configuration to the interposer, use it only after confirming the physical setup and selected values.
+
+## Choose File
+
+Choose File selects a user-defined interposer configuration file for loading. The workflow allows the engineer to select which configuration tables to load.
+
+Choosing a file loads its configuration into the software. It does not, by itself, mean that the selected values have been written to the physical interposer.
+
+## Apply File
+
+Apply File applies the selected configuration file. The operation saves the Recording Options and writes the selected preset values to the interposer for the selected configuration tables.
+
+It may require a host reboot. A board-ID mismatch warning must be checked before proceeding.
+
+**Important distinction:** Choose File selects/loads a configuration file; Apply File applies its selected configuration to the relevant equipment. Do not treat these two controls as interchangeable.
+
+---
+
+# Autotune and Probe Calibration Wizard
+
+The Autotune and Probe Calibration Wizard is used to prepare and calibrate the analyzer/interposer signal paths for capturing PCIe traffic. It verifies the equipment, accepts the intended link parameters and polarity, assesses link quality, connects to the host when required, and performs the calibration operations.
+
+The wizard walkthrough in this learning session was based on the Summit T5 PCI Express Analyzer User Manual, PCIe Protocol Analysis Software Version 13.22.
+
+## Wizard sequence
+
+The wizard contains the following stages:
+
+| Stage | Wizard screen | Manual figure | Printed page |
+|---|---|---:|---:|
+| Analyzer Verification | Verify the Summit analyzer | 6.206 | 342 |
+| Interposer Verification | Verify the interposer | 6.207 | 343 |
+| Setting Parameters | Select calibration channels and target link parameters | 6.208 | 344 |
+| Setting Polarity | Set lane polarity for each direction | 6.209 | 345 |
+| Precalibration | Assess initial link quality and required calibration work | 6.210 | 346 |
+| Setup Connection | Configure the software connection to the host | 6.211 | 347 |
+| Host System and DUT Configuration | Identify the PCIe DUT and select applicable presets | 6.212 | 348 |
+| Calibration Process | Run autotuning and calibration | 6.213 | 349 |
+| Calibration Results | Review and save calibration results | 6.214 | 350 |
+
+The detailed calibration report is shown separately in Figure 6.215, printed page 351.
+
+## Analyzer Verification
+
+The first stage identifies the physical Summit analyzer used for the calibration procedure.
+
+Select and verify the correct analyzer model and serial number. The information must correspond to the actual Summit unit connected to the Control PC.
+
+This is equipment identification. It does not establish that the SSD has trained successfully or that the PCIe signal path is ready for capture.
+
+## Interposer Verification
+
+The second stage identifies the interposer used in the setup.
+
+Select the exact supported interposer model. The selection must agree with the physical interposer installed between the host and DUT and the analyzer connection arrangement.
+
+Do not choose a similar-looking interposer entry simply because it is available in the list. The correct model and board identity matter when loading or applying interposer-specific settings.
+
+## Setting Parameters
+
+The third stage configures the parameters used by the calibration procedure.
+
+The screen includes the following selections:
+
+| Parameter | Purpose |
+|---|---|
+| Calibration channels | Select whether to calibrate the Upstream direction, Downstream direction or both |
+| Dwell time | Sets the interval used for the error measurement during calibration |
+| Analyzer Calibration maximum retries | Sets the maximum retry count for the Analyzer Calibration operation |
+| DUT Autotuning maximum retries | Sets the maximum retry count for DUT autotuning |
+| Intended Link Width | Selects the intended PCIe link width, such as x1, x2, x4, x8 or x16 |
+| Intended Speed | Selects the intended PCIe link speed, from 2.5 GT/s through 32.0 GT/s |
+
+The example shown in the manual uses a 100 ms dwell time, 10 maximum retries for Analyzer Calibration, 10 maximum retries for DUT Autotuning, x4 intended width and 16 GT/s intended speed.
+
+These are example values from the manual screenshot, not universal settings for every lab setup. Select parameters that match the actual Host, DUT, interposer and intended test link.
+
+The retry fields specify maximum retry counts. Do not infer additional retry behavior that is not described by the manual.
+
+## Setting Polarity
+
+The fourth stage is the Setting Polarity screen (Figure 6.209).
+
+The screen presents two separate lane groups:
+
+| Direction | Direction label in the wizard |
+|---|---|
+| Upstream | Device to Host |
+| Downstream | Host to Device |
+
+Each direction has individual lane controls. The displayed lane positions run from Lane 15 through Lane 0. The screen asks the engineer to invert polarity for lanes with negative polarity.
+
+Select only the lanes whose polarity has been identified as inverted. For an x4 link, the active lanes of interest are Lane 0 through Lane 3; do not select unused lanes simply because their checkboxes are visible.
+
+**Illustrative x4 example only:** If measurement or the verified setup identifies Upstream Lane 1 and Downstream Lane 2 as inverted, select those two lane controls in their respective direction groups. This is an example, not a finding about our institute hardware.
+
+Incorrect polarity settings can introduce errors in the recorded trace. The wizard's polarity step is a manual lane-selection step; do not confuse it with the separate Recording Options control for automatic lane-polarity discovery.
+
+After setting the required lane polarities, proceed to Precalibration.
+
+## Precalibration
+
+The fifth stage is the Precalibration Link Quality Check (Figure 6.210).
+
+This stage assesses the existing link quality and determines which calibration operations are required. It is an initial assessment, not the final calibration result.
+
+In the manual's example, the link quality is reported as not good. The screen identifies three required operations:
+
+| Operation | Purpose in the calibration flow |
+|---|---|
+| Interposer: Host-to-DUT tuning | Tunes the signal path between the Host and DUT through the interposer |
+| Interposer: Analyzer-path calibration | Calibrates the signal path between the interposer and analyzer |
+| Analyzer: AutoCalibration | Performs the analyzer's AutoCalibration operation |
+
+The example does not mean that every calibration session will require all three operations. The required work depends on the link-quality assessment.
+
+A poor analyzer capture must not automatically be attributed to SSD firmware. The Host-to-DUT path and the interposer-to-analyzer observation path also need to be considered.
+
+## Setup Connection
+
+The sixth stage configures the software connection between the calibration wizard and the Host system. This is separate from the PCIe signal connection used to capture traffic.
+
+The manual provides these host operating-system choices:
+
+| Host selection | Connection information shown by the wizard |
+|---|---|
+| Linux | Login, password and IP address |
+| Windows | Agent address |
+| N/A | No additional host connection information |
+
+Use authorized host credentials only. Do not place server passwords in shared notes or validation reports.
+
+The screen also provides an option labelled `Disable Active State Power Management (ASPM) on Host target system`. ASPM is PCIe link power management. This option changes the Host's ASPM behavior; do not enable it automatically for every test. Use it only when justified by the calibration procedure and the test requirements.
+
+Keep the three connections distinct:
+
+| Connection | Purpose |
+|---|---|
+| Control PC to Summit T516 | Analyzer control and software communication, over the analyzer control connection |
+| Calibration wizard to Host | Host-system interaction required by the calibration procedure |
+| Host to interposer to DUT, with the analyzer connected to the interposer | Physical PCIe signal path being observed |
+
+A successful Control PC connection to the T516 does not prove that the calibration wizard has connected to the Host. Likewise, a successful Host software connection does not prove that PCIe traffic is being captured correctly.
+
+## Host System and DUT Configuration
+
+The seventh stage identifies the PCIe DUT and selects the Host/DUT presets that may be used during calibration.
+
+The PCIe Device dropdown lists detected PCIe devices. In the manual's example, the selected device is a Standard NVM Express Controller. Select the controller corresponding to the SSD actually connected to the interposer.
+
+The `Show full list of PCIe devices` control displays the full list of detected devices, including device types that may not appear in the default list, such as Root Complex Root Ports and Event Collectors.
+
+The screen provides local and cloud preset selections for the Host and DUT:
+
+| Preset field | Source |
+|---|---|
+| Local Host | Host preset stored on the Control PC |
+| Cloud Host | Host preset stored in the cloud library |
+| Local DUT | DUT preset stored on the Control PC |
+| Cloud DUT | DUT preset stored in the cloud library |
+
+The `Calibrate using presets` option is enabled by default. When enabled, at least one preset must be selected to proceed. Unchecking it allows calibration to proceed without selecting presets. Selecting more presets can increase calibration time.
+
+For our lab, we must first identify the actual server platform, SSD/controller and interposer. Do not select unrelated presets merely to satisfy the wizard.
+
+## Calibration Process
+
+The eighth stage runs the selected autotuning and calibration operations (Figure 6.213).
+
+The screen displays progress and a log window. The log can show operations such as:
+
+- The calibration service starting.
+- DUT-path autotuning and analyzer-path calibration starting.
+- Autotuning starting.
+- Target and current link parameters being reported.
+- The link being reset as part of the speed-adjustment process.
+- CTLE and DCGain values being reported for Upstream and Downstream.
+
+The manual's example includes a link reset while the calibration process adjusts speed. A link reset during this procedure is part of the example calibration workflow; it should not automatically be classified as an SSD failure.
+
+Treat log entries as evidence of what the calibration software reports. Do not treat an intermediate CTLE/DCGain value as a final calibration result, and do not assume that progress-bar movement alone proves success.
+
+Calibration can take time. Carry it out only in an approved lab window because link resets and calibration activity can interrupt normal PCIe operation.
+
+## Calibration Results
+
+The ninth stage presents the calibration outcome and provides access to the detailed calibration report.
+
+Review the process status and open the report before treating the calibration as complete. The report records per-lane calibration settings separately for Upstream and Downstream.
+
+The wizard provides options to save the calibration results locally or in the cloud:
+
+| Save destination | Meaning |
+|---|---|
+| Local | Saves the calibration result as a local preset on the Control PC; it can be accessed there or copied to another PC |
+| Cloud | Saves the result to the cloud so it can be accessed from another internet-connected PC |
+
+Cloud saving is an explicit choice. The wizard includes an agreement/consent checkbox for posting calibration results to the cloud. Use it only when permitted by the lab's data-sharing policy.
+
+The result screen also allows descriptive Host and DUT names and an optional comment. Finish saves the calibration results as a preset according to the selected save options.
+
+A report being available is not, by itself, proof that the calibration completed successfully. Check the calibration outcome and any reported errors before recording the result as successful.
+
+---
+
+# Reading the Calibration Report
+
+The detailed report is shown in Figure 6.215, printed page 351 of the Summit T5 User Manual.
+
+The report presents calibration information for the Upstream and Downstream directions and records values for individual lanes. The three parameters discussed in this learning session are CTLE, DCGain and SigDet.
+
+These are analyzer/probe signal-path calibration settings. They are not NVMe SSD firmware parameters, PCIe link-speed measurements or error counters.
+
+## CTLE — Continuous Time Linear Equalization
+
+CTLE adjusts the frequency response of the received signal. High-frequency signal components can be attenuated as a signal travels through the physical channel. CTLE provides frequency-dependent equalization to compensate for channel loss.
+
+The report records the CTLE setting for each lane, expressed in dB.
+
+Different lanes may require different CTLE values because their signal paths are not necessarily identical. A higher CTLE value must not automatically be interpreted as better calibration.
+
+## DCGain — DC Gain
+
+DCGain is the gain setting associated with the signal level. It is distinct from CTLE's frequency-dependent equalization.
+
+The report records DCGain for each lane. Do not interpret it as a PCIe protocol metric or as a direct measurement of SSD performance.
+
+## SigDet — Signal Detection threshold
+
+SigDet means Signal Detection threshold. It is associated with the signal-detection circuitry's threshold for recognizing an incoming signal.
+
+The Analyzer Calibration section of the manual describes the following values for Manual Mode:
+
+| Item | Manual-mode information in the manual |
+|---|---:|
+| Default SigDet | 60 mV |
+| Available range | 30–410 mV |
+| Available steps | 7 |
+
+The manual also notes that SigDet is not available for every device. These manual-mode values must not be assumed to be the correct setting for every automatic calibration or every interposer.
+
+## Read the report lane by lane
+
+For each direction:
+
+- Identify whether the table is Upstream or Downstream.
+- Identify the lane number.
+- Read that lane's CTLE value.
+- Read that lane's DCGain value.
+- Read that lane's SigDet value, where available.
+- Repeat for the other active lanes.
+
+**Illustrative example only — not actual T516 calibration results:**
+
+| Direction | Lane | CTLE | DCGain | SigDet |
+|---|---:|---:|---:|---:|
+| Upstream | 0 | 4.0 dB | 2.0 dB | 60 mV |
+
+This row demonstrates how to read the three values for one lane. It is not a target, recommendation or expected result for our equipment.
+
+## Engineering interpretation
+
+Do not assume that:
+
+- Higher CTLE or DCGain values always indicate better calibration.
+- All lanes must have identical settings.
+- A report with numerical values automatically means the calibration passed.
+- The manual's example values are ideal values for every analyzer/interposer combination.
+
+Use the calibration process outcome, reported errors and detailed report together. Preserve the report with the test record so that the signal-capture configuration can be reviewed alongside the analyzer model, interposer, Host, DUT, link speed and width.
+
+The manual figures discussed here do not establish a universal numerical pass/fail limit for CTLE, DCGain or SigDet. Do not create such limits from the example values.
+
+---
+
+# Practical Learning Boundary — Calibration
+
+The Preset Library, Autotune and Probe Calibration Wizard, and calibration report have been covered through guided software familiarization using the Summit T5 manual and screenshots.
+
+**No physical T516 calibration has been performed as part of this walkthrough.** The illustrative lane polarity and report values are examples only, not measurements from the institute hardware.
+
+Before physical calibration or capture, we must inspect and verify the actual Summit T516 model and serial number, interposer model and board identity, compatible analyzer cables, power connections, reference-clock arrangement, Host/DUT topology, lane polarity and the applicable calibration settings. We must also preserve the existing state of the institute servers before changing their configuration.
+
+Our RHEL laptop's internal NVMe drive remains protected and is not part of any write, reset or reconfiguration activity for this lab exercise.
+

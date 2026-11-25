@@ -1227,3 +1227,295 @@ Develop the ability to independently handle common Enterprise NVMe SSD Validatio
 **Project:** Project 2 — Enterprise Drive Validation
 
 **Master Build Plan:** Version 2.2 — Practical Execution Plan
+==============================================================================
+##Project 2 — Final refined 10-build plan
+
+##Build 1 — Enterprise SSD Initialization and NVMe Detection
+Priority A
+
+##Objective: 
+	**Diagnose and validate failures preventing an SSD from becoming available to the host.**
+
+- Server power, BIOS and platform configuration.
+- Physical SSD connection, slot, backplane and cabling.
+- Basic PCIe enumeration and device visibility.
+- PCI configuration space, Vendor ID and Device ID.
+- BAR detection, assignment and resource allocation.
+- Linux NVMe driver, module loading, binding and probe.
+- Controller registers, capabilities and initialization.
+- CC.EN, CSTS.RDY and controller fatal status.
+- Admin Submission and Completion Queue initialization.
+- Admin commands and controller identification.
+- Identify Controller and Identify Namespace.
+- NVM subsystem, controller discovery and namespace attachment.
+- Namespace availability, capacity and LBA format.
+- Linux block-device registration and /dev/nvme*.
+- Cold boot, warm reboot and repeated initialization.
+- Firmware, controller and driver initialization failures.
+
+##Practical outcome: 
+	Given an SSD detection failure, you can investigate the path from server startup through PCIe enumeration, driver binding, controller readiness and namespace discovery.
+
+##Boundary: 
+	Basic PCIe connectivity only. Full PCIe link investigation belongs to Build 2.
+
+##Build 2 — PCIe Link Validation and Troubleshooting
+Priority A
+
+##Objective: 
+	**Validate PCIe connectivity and investigate link-level failures.**
+- PCIe Root Complex, Root Ports, switches and retimers.
+- Direct-attached, switch-based and retimer-based topologies.
+- PCIe Gen4 and Gen5.
+- LTSSM states and substates.
+- Detect, Polling, Configuration, L0 and Recovery.
+- TS1, TS2 and other relevant ordered sets.
+- Receiver detection, bit lock and symbol lock.
+- Lane detection, polarity inversion and lane reversal.
+- Link speed and width negotiation.
+- Speed/width downgrade.
+- Gen4/Gen5 equalization.
+- Unexpected link drops and retraining.
+- AER correctable, non-fatal and fatal errors.
+- TLP/DLLP and replay-related issues.
+- ASPM: L0s, L1, L1.1 and L1.2.
+- Teledyne LeCroy analyzer setup, capture and trace analysis.
+- PCIe interoperability and stress validation.
+
+##Practical outcome: 
+	Investigate link failures, collect analyzer traces, correlate them with Linux evidence and isolate likely platform, hardware or device causes.
+	
+	
+##Build 3 — NVMe Protocol, Command Processing and I/O Validation
+Priority A
+
+##Objective: 
+	**Independently validate NVMe command execution, queues and host-controller interaction.**
+	
+- Admin and I/O command processing.
+- SQ/CQ creation, deletion and queue management.
+- Queue depth, queue-full and concurrent I/O.
+- Head/tail pointers and doorbells.
+- Phase Tag and CID handling.
+- MSI-X and polling.
+- Read and Write command execution.
+- Flush and FUA semantics.
+- Identify, Get Log Page, Get/Set Features.
+- Namespace-related command behaviour.
+- PRP/SGL descriptor validation.
+- DMA-related data-transfer issues.
+- Invalid opcode, NSID, SLBA and command parameters.
+- Command timeouts and hangs.
+- Abort and asynchronous event handling.
+- Missing, duplicate or delayed completions.
+- Error status and command-completion handling.
+- Data verification during command execution.
+
+##Practical outcome: 
+	Develop test cases, execute NVMe commands, generate I/O workloads, identify protocol failures and investigate incorrect command behaviour.
+
+##Boundary: 
+	Admin Queue startup belongs to Build 1. FTL mapping correctness belongs to Build 4.
+	
+	
+##Build 4 — FTL, Data Integrity and SSD Internal Storage Management
+Priority B
+
+##Objective: 
+	**Understand and validate the correctness of logical data storage and internal flash management.**
+	
+- FTL and logical-to-physical mapping.
+- Mapping updates during Write and overwrite.
+- Mapping consistency.
+- Physical page allocation at the conceptual level.
+- Stale-data and incorrect-Read failures.
+- Mapping metadata and checkpoint concepts.
+- Garbage Collection.
+- Valid-page relocation.
+- Free-block management.
+- Block erasure and reclamation.
+- Wear Leveling.
+- TRIM/deallocation.
+- Overprovisioning and capacity utilisation.
+- Data integrity after overwrite and internal relocation.
+- Data integrity after relevant recovery operations.
+
+##Practical outcome: 
+	Validate that data remains correct after Writes, overwrites, deallocation and relevant internal storage-management activity; understand how to investigate FTL-related symptoms.
+
+We will focus on observable behaviour, test patterns, evidence and validation methods rather than attempting to reproduce proprietary FTL algorithms.
+
+##Build 5 — NAND Media Reliability, ECC and Error Management
+Priority B
+
+##Objective: 
+	**Understand media-related failures and validate the SSD's error-handling and reliability behaviour.**
+	
+- NAND Read, Page Program and Block Erase operations.
+- ECC encoding and decoding.
+- Correctable and uncorrectable errors.
+- Read Retry.
+- Bad-block management.
+- Media-error handling and recovery.
+- Read Disturb and Data Retention concepts.
+- NAND wear and endurance.
+- Media-error reporting.
+- SMART/Health media information.
+- Error Information Log and available telemetry.
+- Reliability and endurance validation concepts.
+- Data integrity under applicable media-stress conditions.
+
+##Practical outcome: 
+	**Recognise NAND-related failure symptoms, analyse available health/error evidence and design appropriate reliability tests.**
+
+We will distinguish actual physical NAND testing from controller-level emulation and host-observable error testing.
+
+##Build 6 — Enterprise SSD Performance Validation and FIO
+Priority A
+
+##Objective: 
+	**Independently design, execute and analyse enterprise SSD performance tests.**
+	
+- FIO installation, configuration and job files.
+- Sequential Read and Write.
+- Random Read and Write.
+- Mixed Read/Write ratios.
+- Block-size selection.
+- Queue-depth variation.
+- Number of jobs and parallelism.
+- IOPS and bandwidth.
+- Average latency.
+- P95, P99 and P99.9 latency.
+- Tail latency and QoS.
+- Drive preconditioning.
+- Steady-state testing.
+- Sustained workloads.
+- Four-corner performance testing.
+- Performance consistency.
+- High-queue-depth behaviour.
+- Workload-specific performance.
+- FIO JSON output and analysis.
+- Firmware-to-firmware performance comparison.
+- Performance regression identification.
+- Long-duration workload testing.
+- Python/Pytest-based performance automation.
+
+##Practical outcome: 
+	Independently prepare FIO workloads, run benchmarks, analyse results, compare firmware versions and report performance regressions.
+
+This is a dedicated engineering competency, not simply learning FIO commands.
+
+##Build 7 — Controller Reset, Error Handling and Recovery
+Priority A
+
+##Objective: 
+	**Validate that the SSD recovers correctly from runtime controller faults and reset operations.**
+	
+- NVMe Controller Reset.
+- PCIe FLR.
+- NVM Subsystem Reset, where supported.
+- Queue teardown and recreation.
+- Controller readiness transitions.
+- Outstanding I/O handling.
+- Reset during idle.
+- Reset during active Read/Write workloads.
+- Controller hangs and watchdog recovery.
+- Fatal controller error handling.
+- Namespace availability after recovery.
+- Data integrity after reset.
+- Repeated reset stability.
+- Recovery time and timeout behaviour.
+- Linux driver interaction during recovery.
+- PCIe Hot Reset to controller recovery handoff.
+
+##Practical outcome: 
+	Execute supported reset tests, observe device recovery, identify failed recovery paths and validate fixes.
+
+##Boundary: 
+ 	Build 2 owns link-level Hot Reset analysis; this build owns subsequent controller recovery.
+ 	
+##Build 8 — Power Loss Protection and Data Persistence
+Priority A
+
+##Objective: 
+	**Validate data durability and recovery following unexpected power loss.**
+	
+- Volatile Write Cache.
+- NVMe Flush and FUA.
+- Acknowledged Write persistence.
+- Power-fail detection concepts.
+- PLP and hold-up capacitor operation.
+- Emergency shutdown sequence.
+- Protection of pending user data.
+- Protection of critical FTL metadata.
+- Power loss during active Write operations.
+- Power loss during mixed workloads.
+- Power loss during internal metadata operations.
+- Recovery after sudden power loss.
+- Mapping and metadata consistency after recovery.
+- Repeated power-fail testing.
+- PLP health reporting.
+- Data-integrity verification after recovery.
+
+##Practical outcome: 
+	Design and execute durability tests, understand which data must survive, collect recovery evidence and investigate persistence failures.
+	
+##Build 9 — Thermal and SSD Power Management
+Priority A
+
+##Objective: 
+	**Validate SSD temperature management, throttling and NVMe power-state behaviour.**
+	
+- Temperature monitoring and sensor information.
+- SMART temperature reporting.
+- Critical temperature warnings.
+- Thermal thresholds.
+- Thermal throttling activation.
+- Thermal recovery and hysteresis.
+- Performance under sustained temperature conditions.
+- Thermal-event reporting.
+- NVMe power-state identification.
+- Autonomous Power State Transition (APST).
+- Idle power-state entry and exit.
+- Wake-up latency.
+- I/O after idle.
+- Power consumption in supported states.
+- Repeated active/idle transitions.
+- Performance across power states.
+
+##Practical outcome: 
+	Verify thermal and power-management behaviour, assess the impact on performance and investigate failures during power-state transitions.
+
+##Boundary: 
+	PCIe ASPM belongs to Build 2. Sudden electrical power loss belongs to Build 8.
+	
+##Build 10 — Firmware Lifecycle, Update and Compatibility Validation
+Priority A
+
+##Objective: 
+	**Validate firmware images, downloads, activation, upgrades and recovery.**
+	
+- Firmware image identification.
+- Version, build ID and checksum verification.
+- Product and hardware-revision compatibility.
+- Firmware Download command.
+- Transfer sizes, offsets and alignment.
+- Invalid or unsupported image rejection.
+- Firmware slot management.
+- Firmware Slot Information log.
+- Firmware Commit operations.
+- Activation without reset, where supported.
+- Activation requiring reset.
+- Active firmware revision verification.
+- Firmware upgrades.
+- Supported downgrades.
+- Rollback and recovery, where supported.
+- Interrupted downloads.
+- Power interruption during update.
+- Update failure and recovery.
+- Data preservation during firmware updates.
+- Post-activation initialization and namespace availability.
+- Firmware update logs and status reporting.
+
+##Practical outcome: 
+	Review a firmware release package, verify the candidate image, execute supported update procedures, investigate activation failures and verify firmware fixes.
